@@ -2958,7 +2958,11 @@ const SAMPLE = `第一章 雨天
   for (const b of books) { // books imported before titles were cleaned
     if (/\s--\s/.test(b.title || '') || /^(unknown|未知|佚名|anonymous)$/i.test(b.author || '')) { Object.assign(b, cleanMeta(b.title, b.author)); await DB.put('books', b); }
   }
-  if (!books.length && !LS.get('seeded', false)) {
+  const hosted = !!document.querySelector('link[rel=manifest]');
+  if (hosted) { // the online app never shows the built-in example; remove it where it was added before
+    for (const b of books.filter(x => x.sample)) { await DB.del('books', b.id, { sync: true }); await DB.del('files', b.id); for (const v of await DB.byBook(b.id)) await DB.del('vocab', v.id, { sync: true }); }
+    renderLibrary();
+  } else if (!books.length && !LS.get('seeded', false)) {
     const f = new File([SAMPLE], '雨天的书店 -- 示例 · Exemple.txt', { type: 'text/plain' }); f.sample = true;
     LS.set('seeded', true);
     await importFiles([f]);
