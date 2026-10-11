@@ -1365,10 +1365,22 @@ function parseBookPage(raw) {
   out.authorIntro = section(['作者简介', '作者簡介', '作者介紹', '作者介绍']);
   const tg = t.match(/豆瓣成员常用的标签[^\n]*\n([\s\S]{0,300}?)\n\s*(?:喜欢读|谁读这本书|二手市场|$)/);
   if (tg) out.tags = tg[1].split(/[\s·]+/).map(x => x.trim()).filter(x => x && x.length <= 10 && !/^\(|^（/.test(x)).slice(0, 10);
-  out.count = ['author', 'publisher', 'pubDate', 'isbn', 'rating', 'summary', 'pages', 'translator'].filter(k => out[k]).length;
+  // title: "书名 (豆瓣)" if present, otherwise the nearest plain line above the 作者 line (the page heading)
+  const tt = t.match(/\n\s*([^\n]{1,60}?)\s*[(（]豆瓣[)）]\s*\n/);
+  if (tt) out.title = tt[1].trim();
+  else {
+    const lines = t.split('\n'); const ai = lines.findIndex(l => /^\s*(作者|著者)\s*[:：]/.test(l));
+    const NAV = /^(豆瓣|读书|電影|电影|音乐|同城|小组|阅读|FM|时间|豆品|市集|首页|登录|注册|搜索|博客來|博客来|會員|会员|購物車|购物车|商品|分類|分类|書籍|书籍|中文書|中文书|下载豆瓣客户端|我的|加入|收藏|分享|推荐|.*[>›»].*)$/;
+    for (let i = ai - 1; ai > 0 && i >= Math.max(0, ai - 8); i--) {
+      const l = lines[i].trim(); if (!l || NAV.test(l) || /[:：]/.test(l) || /^\d+(\.\d+)?$/.test(l) || l.length > 60) continue;
+      out.title = l.replace(/\s*[(（]豆瓣[)）]$/, ''); break;
+    }
+  }
+  if (out.author) out.author = out.author.replace(/^\s*[\[【(（][^\]】)）]{1,4}[\]】)）]\s*/, '').replace(/\s*(著|编著|主编)$/, '').trim();
+  out.count = ['title', 'author', 'publisher', 'pubDate', 'isbn', 'rating', 'summary', 'pages', 'translator'].filter(k => out[k]).length;
   return out;
 }
-const EXT_LABELS = [['author', 'Auteur'], ['translator', 'Traducteur'], ['original', 'Titre original'], ['subtitle', 'Sous-titre'], ['publisher', 'Éditeur'], ['producer', 'Producteur'], ['series', 'Collection'], ['pubDate', 'Parution'], ['pages', 'Pages'], ['price', 'Prix'], ['binding', 'Reliure'], ['lang', 'Langue'], ['isbn', 'ISBN']];
+const EXT_LABELS = [['title', 'Titre'], ['author', 'Auteur'], ['translator', 'Traducteur'], ['original', 'Titre original'], ['subtitle', 'Sous-titre'], ['publisher', 'Éditeur'], ['producer', 'Producteur'], ['series', 'Collection'], ['pubDate', 'Parution'], ['pages', 'Pages'], ['price', 'Prix'], ['binding', 'Reliure'], ['lang', 'Langue'], ['isbn', 'ISBN']];
 function pasteInfo(b, done) {
   const prev = h('div', { style: 'display:grid;gap:10px' });
   let parsed = null;
@@ -1390,7 +1402,8 @@ function pasteInfo(b, done) {
     if (p.isbn && !b.isbn) b.isbn = p.isbn;
     if (p.publisher) b.publisher = p.publisher;
     if (p.pubDate) b.date = p.pubDate.slice(0, 4);
-    if (p.author && (!b.author || b.sample)) b.author = p.author.replace(/^\[[^\]]*\]\s*/, '');
+    if (p.title) b.title = p.title;
+    if (p.author) b.author = p.author;
     if (p.summary) b.description = p.summary;
     await DB.put('books', b); mm.close(); renderLibrary(); done(); toast('Fiche complétée.');
   } }, 'Enregistrer dans la fiche');
