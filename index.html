@@ -647,7 +647,8 @@ const pinyinHTML = p => p.split(' ').map(s => { const y = syllable(s); return `<
 const pinyinText = p => p.split(' ').map(s => syllable(s).text).join(' ');
 // CEDICT cross-references like 個|个[ge4] -> show simplified + pinyin
 const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t, si, p) => `<span class="zh">${si}</span> ${pinyinText(p)}`)
-  .replace(/([\u3400-\u9FFF]+)\[([^\]]+)\]/g, (_, w, p) => `<span class="zh">${w}</span> ${pinyinText(p)}`);
+  .replace(/([\u3400-\u9FFF]+)\[([^\]]+)\]/g, (_, w, p) => `<span class="zh">${w}</span> ${pinyinText(p)}`)
+  .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
 const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'tones', pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
@@ -1249,6 +1250,8 @@ async function renderLibrary() {
       b.stats && b.stats.v === STATS_V ? h('div', { class: 'row', title: `${LEN_BANDS[lenBand(b.stats.chars)][1]} · difficulté ${diffLevel(b.stats)}/6 (${DIFF[diffLevel(b.stats) - 1][1]})` }, h('span', null, fmtWan(b.stats.chars)), h('span', null, '·'), h('span', null, `Difficulté ${diffLevel(b.stats)}/6`)) : null,
       h('div', { class: 'row' },
         h('button', { class: 'linkish', onclick: () => showDetails(b.id) }, 'Fiche'),
+        b.stats && b.stats.v === STATS_V ? [h('span', null, '·'), h('button', { class: 'linkish', onclick: () => showStats(b.id, 'overview') }, 'Stats'), h('span', null, '·'),
+          h('button', { class: 'linkish', onclick: () => showStats(b.id, 'rare') }, 'Rares')] : null,
         n ? h('span', null, '·') : null,
         n ? h('button', { class: 'linkish', onclick: () => showVocab({ bookId: b.id }) }, `${n} mot${n > 1 ? 's' : ''}`) : null)));
   }
@@ -1300,7 +1303,6 @@ async function showDetails(id) {
     h('div', { class: 'grid2' }, field('Statut', status), h('div', { class: 'field' }, h('span', { class: 'muted', style: 'font-size:13px' }, 'Note'), rate)),
     h('div', { class: 'grid2' }, field('Commencé le', inp('startDate', 'date')), field('Terminé le', inp('endDate', 'date'))),
     field('Mes notes', h('textarea', { id: 'd-notes', placeholder: 'Impressions, citations, critique…', onchange: e => { b.notes = e.target.value; save(); } }, b.notes || '')),
-    statsSummary(b),
     extBlock(b),
     h('div', { class: 'grid2' }, field('Lien Douban', inp('douban', 'url', 'https://book.douban.com/subject/…')), field('Lien 博客來 / Readmoo', inp('twLink', 'url', 'https://www.books.com.tw/products/…')), field('Lien Goodreads', inp('goodreads', 'url', 'https://www.goodreads.com/book/…'))),
     h('div', { class: 'confirm-row' },
@@ -1628,105 +1630,103 @@ function statsSummary(b) {
     h('div', { class: 'line' }, h('b', null, `Difficulté ${lv}/6`), h('span', null, DIFF[lv - 1][1]), h('span', { class: 'muted' }, `· 98 % du texte avec ${fmtN(st.s98)} caractères (référence ${fmtN(REF.s98)})`)),
     h('div', null, h('button', { class: 'btn small', onclick: () => showStats(b.id) }, `Statistiques et caractères rares (${settings.rareMode === 'level' ? st.offLvTotal : st.rareTotal})`)));
 }
-async function showStats(id) {
+async function showStats(id, tab) {
   const b = await DB.get('books', id); if (!b) return;
   await Dict.load(); ensureFreq();
   if (!b.stats || b.stats.v !== STATS_V) { toast('Statistiques en cours de calcul, réessaie dans un instant.'); StatsQ.add(id); return; }
   const st = b.stats, bi = lenBand(st.chars), lv = diffLevel(st), sys = sysOf(st), REF = REFS[sys]; ensureTW();
-  // length
+  const lvName = sys === 'tw' ? 'TOCFL' : 'HSK';
+  if (!st.offLv) { st.offLv = []; st.offLvTotal = 0; }
+  tab = tab || LS.get('statsTab', 'overview');
+  const rareN = () => settings.rareMode === 'level' ? st.offLvTotal : st.rareTotal;
+
+  // ---- overview ----
   const lpos = v => Math.min(1, Math.max(0, (Math.log10(Math.max(v, 1000)) - 3) / (Math.log10(2e6) - 3)));
   const lenBands = LEN_BANDS.map((x, i) => ({ from: i ? LEN_BANDS[i - 1][0] : 1000, to: Math.min(x[0], 2e6), label: x[1].replace('小说', '') }));
   const readH = speed => { const m = st.chars / speed; return m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h'; };
-  const lenSec = h('section', null, h('h3', null, 'Longueur'),
-    h('div', { class: 'bignum' }, h('b', null, fmtWan(st.chars)), h('span', { class: 'zh' }, LEN_BANDS[bi][1]), h('span', { class: 'muted' }, `${LEN_BANDS[bi][2]} · ${LEN_BANDS[bi][3]}`)),
-    scaleEl(lenBands, lpos, st.chars, null, fmtWan(st.chars), '', bi),
-    h('div', { class: 'cmp' },
-      h('span', null, 'Caractères (字数, ponctuation comprise)'), h('span', { class: 'num' }, fmtN(st.chars)), h('span'),
-      h('span', null, 'Caractères chinois'), h('span', { class: 'num' }, fmtN(st.han)), h('span'),
-      h('span', null, 'Caractères différents'), h('span', { class: 'num' }, fmtN(st.unique)), h('span'),
-      h('span', null, 'Écriture'), h('span', { class: 'num' }, st.script === 'trad' ? 'traditionnelle' : 'simplifiée'), h('span'),
-      h('span', null, 'Temps de lecture, lecteur natif (≈ 300 字/min)'), h('span', { class: 'num' }, readH(300)), h('span'),
-      h('span', null, 'Temps de lecture, apprenant avancé (≈ 120 字/min)'), h('span', { class: 'num' }, readH(120)), h('span')));
-  // difficulty
   const dpos = v => Math.min(1, Math.max(0, (v - 1000) / 3000));
   const kk = REF.s98 / REFS.cn.s98;
   const dBands = DIFF.map((x, i) => ({ from: i ? DIFF[i - 1][0] * kk : 1000, to: Math.min(x[0] * kk, 4000), label: String(i + 1) }));
-  const pct = (a, r) => { const d = Math.round(100 * (a - r) / r); return d === 0 ? '= référence' : (d < 0 ? `${d} %` : `+${d} %`); };
-  const diffSec = h('section', null, h('h3', null, 'Difficulté (rareté des caractères)'),
-    h('div', { class: 'bignum' }, h('b', null, `${lv}/6`), h('span', { style: 'font-size:17px;font-weight:600' }, DIFF[lv - 1][1])),
-    h('p', { style: 'margin:0' }, `Pour comprendre 98 % des caractères de ce livre, il faut connaître les ${fmtN(st.s98)} caractères les plus fréquents (≈ ${levelEquiv(st.s98, sys)}). En moyenne, un texte ${sys === 'tw' ? 'taïwanais' : 'chinois moderne'} en demande ${fmtN(REF.s98)}. Comparaison faite avec la ${REF.src}.`),
-    scaleEl(dBands, dpos, st.s98, REF.s98, 'Ce livre · ' + fmtN(st.s98), 'Référence · ' + fmtN(REF.s98), lv - 1),
-    h('div', { class: 'cmp' },
-      h('span', { class: 'h' }), h('span', { class: 'h num' }, 'Ce livre'), h('span', { class: 'h num' }, 'Référence'),
-      h('span', null, 'Caractères à connaître pour 95 % du texte'), h('span', { class: 'num' }, fmtN(st.s95)), h('span', { class: 'num' }, fmtN(REF.s95)),
-      h('span', null, 'Caractères à connaître pour 98 % du texte'), h('span', { class: 'num' }, fmtN(st.s98)), h('span', { class: 'num' }, fmtN(REF.s98)),
-      h('span', null, 'Caractères à connaître pour 99 % du texte'), h('span', { class: 'num' }, fmtN(st.s99)), h('span', { class: 'num' }, REF.s99 ? fmtN(REF.s99) : '—'),
-      h('span', null, 'Caractères rares (hors des 3 000 premiers), pour 1 000'), h('span', { class: 'num' }, String(st.rare1000).replace('.', ',')), h('span', { class: 'num' }, String(REF.rare1000).replace('.', ',')),
-      h('span', null, 'Écart sur le seuil de 98 %'), h('span', { class: 'num' }, pct(st.s98, REF.s98)), h('span')),
-    h('div', { class: 'stack' }, h('span', null, 'Ce livre'), stackBar(st.lv), h('span', null, 'Référence'), stackBar(REF.lv)),
-    h('div', { class: 'legend' }, REF.lvNames.map((nm, i) => h('span', { style: `--c:var(--b${i + 1})` }, nm))),
-    h('details', { style: 'font-size:13px' }, h('summary', { style: 'cursor:pointer;color:var(--accent);font-weight:600' }, 'Comment c\'est calculé'),
-      h('p', { class: 'muted', style: 'margin:6px 0 0' }, `Livres en simplifié : chaque caractère reçoit son rang dans la liste de fréquence de Jun Da (193 millions de caractères de chinois écrit moderne, celle qu'utilise HanziDB) ; niveaux HSK 3.0. Livres en traditionnel : rang selon la fréquence à l'écrit à Taïwan, d'après la liste de caractères du 國家教育研究院 (《臺灣華語文能力基準》, 2022, 3 100 caractères) ; niveaux TOCFL. Au-delà de cette liste, on reprend le rang de Jun Da. Les variantes (裏/裡, 衞/衛…) comptent comme un seul caractère. Le seuil de 98 % est le rang du caractère le plus rare qu'il faut connaître pour couvrir 98 % des occurrences du livre ; la référence est ce même calcul sur le corpus entier. Niveaux (référence continentale) : 1 ≤ 1 500, 2 ≤ 1 900, 3 ≤ 2 300, 4 ≤ 2 800, 5 ≤ 3 400, 6 au-delà ; pour Taïwan, les mêmes seuils sont ajustés à la référence taïwanaise (× 1,06). L'équivalence HSK ou TOCFL compare ce nombre au total de caractères des niveaux ; c'est un ordre de grandeur. Longueurs : conventions de l'édition chinoise (中篇 3–10 万字, 长篇 au-delà de 10 万字).`)));
-  // rare characters
+  const pct = (a, r) => { const d = Math.round(100 * (a - r) / r); return d === 0 ? '=' : (d < 0 ? `${d} %` : `+${d} %`); };
+  const row = (label, a, r) => [h('span', null, label), h('span', { class: 'num' }, a), h('span', { class: 'num' }, r == null ? '' : r)];
+  const overview = h('div', { style: 'display:grid;gap:18px' },
+    h('section', null, h('h3', null, 'Longueur'),
+      h('div', { class: 'bignum' }, h('b', null, fmtWan(st.chars)), h('span', { class: 'zh' }, LEN_BANDS[bi][1]), h('span', { class: 'muted' }, LEN_BANDS[bi][2])),
+      scaleEl(lenBands, lpos, st.chars, null, fmtWan(st.chars), '', bi),
+      h('div', { class: 'cmp' },
+        row('Caractères chinois', fmtN(st.han)), row('Caractères différents', fmtN(st.unique)),
+        row('Écriture', st.script === 'trad' ? 'traditionnelle' : 'simplifiée'),
+        row('Lecture (natif · apprenant)', `${readH(300)} · ${readH(120)}`))),
+    h('section', null, h('h3', null, 'Difficulté'),
+      h('div', { class: 'bignum' }, h('b', null, `${lv}/6`), h('span', { style: 'font-size:17px;font-weight:600' }, DIFF[lv - 1][1]), h('span', { class: 'muted' }, `${pct(st.s98, REF.s98)} vs moyenne`)),
+      scaleEl(dBands, dpos, st.s98, REF.s98, 'Livre · ' + fmtN(st.s98), 'Moyenne · ' + fmtN(REF.s98), lv - 1),
+      h('div', { class: 'cmp' },
+        h('span', { class: 'h' }, 'Caractères à connaître'), h('span', { class: 'h num' }, 'Livre'), h('span', { class: 'h num' }, 'Moyenne'),
+        row('pour 95 % du texte', fmtN(st.s95), fmtN(REF.s95)),
+        row('pour 98 % du texte', fmtN(st.s98), fmtN(REF.s98)),
+        row('pour 99 % du texte', fmtN(st.s99), REF.s99 ? fmtN(REF.s99) : '—'),
+        row('Rares (hors 3 000) ‰', String(st.rare1000).replace('.', ','), String(REF.rare1000).replace('.', ',')),
+        row('Niveau équivalent', levelEquiv(st.s98, sys))),
+      h('div', { class: 'stack' }, h('span', null, 'Livre'), stackBar(st.lv), h('span', null, 'Moyenne'), stackBar(REF.lv)),
+      h('div', { class: 'legend' }, REF.lvNames.map((nm, i) => h('span', { style: `--c:var(--b${i + 1})` }, nm))),
+      h('details', { style: 'font-size:13px' }, h('summary', { style: 'cursor:pointer;color:var(--accent);font-weight:600' }, 'Méthode'),
+        h('p', { class: 'muted', style: 'margin:6px 0 0' }, `Rang de fréquence de chaque caractère : liste de Jun Da (Chine continentale, niveaux HSK 3.0) ou, pour un livre en traditionnel, liste du 國家教育研究院 (Taïwan, niveaux TOCFL). Le seuil de 98 % est le nombre de caractères les plus fréquents à connaître pour couvrir 98 % du livre ; la moyenne est le même calcul sur le corpus de référence. Niveaux : 1 ≤ 1 500, 2 ≤ 1 900, 3 ≤ 2 300, 4 ≤ 2 800, 5 ≤ 3 400, 6 au-delà (× 1,06 pour Taïwan).`))));
+
+  // ---- rare characters ----
   const listEl = h('div', { class: 'rare-list' });
   let shown = 0; let parsed = null;
   const getParsed = async () => { if (parsed) return parsed; parsed = (R.book && R.book.id === id && R.data) ? R.data : await parseBook(id); return parsed; };
   const savedSet = new Set((await DB.byBook(id)).map(v => v.simp));
-  const lvName = sys === 'tw' ? 'TOCFL' : 'HSK';
-  if (!st.offLv) { st.offLv = []; st.offLvTotal = 0; }
   const curList = () => settings.rareMode === 'level' ? st.offLv : st.rare;
   const drawMore = () => {
     for (const x of curList().slice(shown, shown + 60)) {
       const es = Dict.entries(x.c) || Dict.entries(x.s); const e = es && (es.find(z => !z.proper) || es[0]);
       const more = h('div', { class: 'more', hidden: true });
-      const row = h('div', { class: 'rare' },
+      const lvl = levelOfKey(x.s, sys);
+      listEl.append(h('div', { class: 'rare' },
         h('button', { 'aria-expanded': 'false', onclick: async ev => {
           const btn = ev.currentTarget; const open = more.hidden; more.hidden = !open; btn.setAttribute('aria-expanded', String(open));
           if (!open || more.dataset.done) return;
-          more.replaceChildren(h('span', { class: 'muted' }, 'Recherche dans le livre…'));
+          more.replaceChildren(h('span', { class: 'muted' }, 'Recherche…'));
           const d = await getParsed(); const forms = new Set([x.c, x.s]); const occ = findOccurrences(d, forms);
           more.dataset.done = '1';
           more.replaceChildren(
             h('div', { class: 'words' }, occ.words.slice(0, 12).map(([w, info]) => {
               const we = Dict.entries(w); const wp = we ? pinyinText((we.find(z => !z.proper) || we[0]).pinyin) : '';
               const simp = we ? we[0].simp : w; const saved = savedSet.has(simp);
-              const add = h('button', { class: saved ? 'saved' : '', title: saved ? 'Déjà dans ton vocabulaire' : 'Ajouter au vocabulaire', 'aria-label': 'Ajouter ' + w, onclick: async () => {
+              const add = h('button', { class: saved ? 'saved' : '', title: saved ? 'Dans ton vocabulaire' : 'Ajouter au vocabulaire', 'aria-label': 'Ajouter ' + w, onclick: async () => {
                 if (savedSet.has(simp) || !we) return;
-                const ch = chapterIn(d, info.k); const e0 = we[0];
-                const v = { id: uid(), bookId: id, section: info.k, chapterIdx: ch.idx, chapter: ch.label, word: w, simp: e0.simp, trad: e0.trad, pinyin: e0.pinyin, senses: we.filter(z => !z.proper || we.every(y => y.proper)).slice(0, 3).map(z => ({ p: z.pinyin, d: z.defs.slice(0, 5) })), sentence: info.sent, addedAt: Date.now(), box: 0, due: 0 };
-                await DB.put('vocab', v); savedSet.add(simp); add.classList.add('saved'); add.textContent = '✓';
-                if (R.book && R.book.id === id) { R.saved.add(simp); updateVocabCount(); }
-                toast(`${w} ajouté · ${ch.label}`);
+                if (await addVocabWord(id, d, w, info.k, info.sent)) { savedSet.add(simp); add.classList.add('saved'); add.textContent = '✓'; }
               } }, saved ? '✓' : '+');
-              return h('span', { class: 'word', title: info.n + ' occurrence(s)' }, h('span', { class: 'zh' }, w), h('span', { class: 'muted' }, wp + (info.n > 1 ? ' ×' + info.n : '')), add);
+              return h('span', { class: 'word', title: info.n + ' fois' }, h('span', { class: 'zh' }, w), h('span', { class: 'muted' }, wp + (info.n > 1 ? ' ×' + info.n : '')), add);
             })),
             ...occ.sents.map(o => h('div', { class: 'sent' }, h('div', null, h('span', { html: markChar(o.s, forms) }), h('small', null, chapterIn(d, o.k).label)),
               h('button', { class: 'btn small', onclick: () => goToPassage(id, o.k, o.s, forms) }, 'Lire ↗'))));
         } },
           h('span', { class: 'c' }, x.c),
           h('span', { class: 'm' }, h('span', { html: e ? pinyinHTML(e.pinyin) : '' }), h('span', { class: 'd', html: e ? xref(e.defs.slice(0, 3).join('; ')) : '—' })),
-          h('span', { class: 'r' }, (x.r ? (sys === 'tw' && x.r > 3100 ? 'hors liste TW' : 'rang ' + fmtN(x.r)) : 'hors liste'), h('br'), levelOfKey(x.s, sys) === 8 ? `hors ${lvName}` : `${lvName} ${levelOfKey(x.s, sys) === 7 && sys !== 'tw' ? '7–9' : levelOfKey(x.s, sys)}`, h('br'), `${x.n} fois`)),
-        more);
-      listEl.append(row);
+          h('span', { class: 'r' }, x.r ? (sys === 'tw' && x.r > 3100 ? 'hors liste' : '#' + fmtN(x.r)) : 'hors liste', h('br'),
+            lvl === 8 ? `hors ${lvName}` : `${lvName} ${lvl === 7 && sys !== 'tw' ? '7–9' : lvl}`, h('br'), `×${x.n}`)),
+        more));
     }
-    shown += 60;
-    moreBtn.hidden = shown >= curList().length;
+    shown += 60; moreBtn.hidden = shown >= curList().length;
   };
   const moreBtn = h('button', { class: 'btn', onclick: drawMore }, 'Afficher plus');
-  const rareH = h('h3'), rareP = h('p', { class: 'muted', style: 'margin:0;font-size:13.5px' });
-  const drawHead = () => {
-    const byLv = settings.rareMode === 'level';
-    rareH.textContent = `Caractères rares · ${byLv ? st.offLvTotal : st.rareTotal}`;
-    rareP.textContent = (byLv
-      ? `Les caractères du livre qui ne figurent dans aucun niveau du ${lvName} (${sys === 'tw' ? '3 133 caractères du TOCFL' : '3 000 caractères du HSK 3.0'}).`
-      : 'Les caractères du livre qui ne font pas partie des 3 000 plus fréquents de la langue écrite.') + ' Du plus rare au moins rare ; touche un caractère pour voir les mots et les phrases où il apparaît.';
-  };
-  const modeSeg = h('div', { class: 'seg' }, [['rank', `Hors des 3 000 plus fréquents (${st.rareTotal})`], ['level', `Hors ${lvName} (${st.offLvTotal})`]].map(([v, l]) => h('button', { 'aria-pressed': String(settings.rareMode === v), onclick: e => {
+  const modeSeg = h('div', { class: 'seg' }, [['rank', `Hors 3 000 plus fréquents · ${st.rareTotal}`], ['level', `Hors ${lvName} · ${st.offLvTotal}`]].map(([v, l]) => h('button', { 'aria-pressed': String(settings.rareMode === v), onclick: e => {
     settings.rareMode = v; LS.set('settings', settings); $$('button', modeSeg).forEach(b2 => b2.setAttribute('aria-pressed', String(b2 === e.currentTarget)));
-    shown = 0; listEl.replaceChildren(); drawHead(); drawMore(); } }, l)));
-  const rareSec = h('section', null, rareH, modeSeg, rareP, listEl, moreBtn);
-  drawHead(); drawMore();
-  modal(`Statistiques · ${b.title}`, h('div', { class: 'pb' }, lenSec, diffSec, rareSec), { cls: 'stats', onclose: () => { if (parsed && parsed !== R.data) parsed.urls.forEach(u => URL.revokeObjectURL(u)); } });
+    shown = 0; listEl.replaceChildren(); drawMore(); rareTab.lastChild.textContent = `Caractères rares · ${rareN()}`; } }, l)));
+  const rarePane = h('div', { style: 'display:grid;gap:10px' }, modeSeg, listEl, moreBtn);
+  drawMore();
+
+  // ---- tabs ----
+  const pane = h('div');
+  const overTab = h('button', { class: 'tab', role: 'tab' }, 'Aperçu');
+  const rareTab = h('button', { class: 'tab', role: 'tab' }, h('span', null, ''), `Caractères rares · ${rareN()}`);
+  const setTab = t => { tab = t; LS.set('statsTab', t); overTab.setAttribute('aria-selected', String(t === 'overview')); rareTab.setAttribute('aria-selected', String(t === 'rare')); pane.replaceChildren(t === 'rare' ? rarePane : overview); };
+  overTab.addEventListener('click', () => setTab('overview')); rareTab.addEventListener('click', () => setTab('rare'));
+  setTab(tab);
+  modal(b.title, h('div', { class: 'pb' }, h('div', { class: 'tabs', role: 'tablist' }, overTab, rareTab), pane),
+    { cls: 'stats', onclose: () => { if (parsed && parsed !== R.data) parsed.urls.forEach(u => URL.revokeObjectURL(u)); } });
 }
 function startPeek() {
   if (!R.book) return;
@@ -1847,7 +1847,7 @@ function showToc() {
   const toc = R.data.toc; const cur = chapterOf(R.cur).idx;
   const scrim = h('div', { class: 'scrim', onclick: () => close() });
   const bid = R.book.id;
-  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid); } }, 'Statistiques et caractères rares')),
+  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'overview'); } }, 'Stats'), h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'rare'); } }, 'Caractères rares')),
     R.data.tocNote ? h('div', { class: 'note' }, R.data.tocNote) : null,
     toc.map((t, i) => h('div', { class: 'row' }, h('a', { href: '#', class: `lv${Math.min(t.level, 2)}${i === cur ? ' cur' : ''}`, onclick: e => { e.preventDefault(); close(); goSection(t.s); } }, t.title),
       isLeafEntry(i) ? h('button', { title: 'Préparer ce chapitre : ses mots les plus rares', onclick: () => { close(); showPrep(i); } }, '预习') : null)));
@@ -2291,10 +2291,10 @@ async function showPrep(i) {
   const draw = () => {
     const byLv = settings.prepRank === 'level', lvName = sys === 'tw' ? 'TOCFL' : 'HSK';
     const words = all.filter(x => byLv ? x.off : x.r > settings.prepRank).sort((p, q) => q.r - p.r || q.n - p.n).slice(0, 25);
-    const crit = byLv ? `un caractère hors ${lvName}` : `un caractère au-delà du rang ${fmtN(settings.prepRank)}`;
+    const crit = byLv ? `un caractère hors ${lvName}` : `un caractère de rang > ${fmtN(settings.prepRank)}`;
     info.textContent = words.length
-      ? `${words.length} mot${words.length > 1 ? 's' : ''} contenant ${crit}, du plus rare au moins rare. Touche un mot pour voir sa phrase.`
-      : `Aucun mot contenant ${crit} dans ce chapitre.`;
+      ? `${words.length} mot${words.length > 1 ? 's' : ''} avec ${crit}. Touche un mot pour sa phrase.`
+      : `Aucun mot avec ${crit}.`;
     const rowOf = x => {
       const es = x.es, e = es.find(z => !z.proper) || es[0];
       const sentEl = h('div', { class: 's', hidden: true, html: esc(x.sent).replace(esc(x.w), `<mark>${esc(x.w)}</mark>`) });
