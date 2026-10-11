@@ -113,6 +113,8 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .book-card .linkish { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; }
 .stars { color: var(--t2); letter-spacing: 1px; font-size: 12px; }
 .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 36px 20px; text-align: center; color: var(--muted); }
+.book-card.drop-on .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
+.drop-hint.img { inset: auto 12px 12px; padding: 14px; background: var(--surface); }
 .drop-hint { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--paper) 85%, transparent); display: grid; place-items: center; font-size: 18px; font-weight: 600; color: var(--accent); z-index: 80; pointer-events: none; }
 .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
 .foot a { color: inherit; }
@@ -1236,7 +1238,7 @@ async function renderLibrary() {
   books.filter(b => (!b.stats || b.stats.v !== STATS_V) && localFiles.has(b.id)).forEach(b => StatsQ.add(b.id));
   for (const b of list) {
     const n = vcount[b.id] || 0;
-    shelf.append(h('article', { class: 'book-card' },
+    shelf.append(h('article', { class: 'book-card', 'data-id': b.id },
       coverEl(b, b.status === 'reading'),
       h('h3', null, b.title),
       b.author ? h('p', { class: 'au' }, b.author) : null,
@@ -1255,6 +1257,16 @@ async function renderLibrary() {
         n ? h('span', null, '·') : null,
         n ? h('button', { class: 'linkish', onclick: () => showVocab({ bookId: b.id }) }, `${n} mot${n > 1 ? 's' : ''}`) : null)));
   }
+}
+
+async function setBookCover(id, file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const b = await DB.get('books', id); if (!b) return;
+  b.cover = await shrinkImage(file);
+  const old = coverURLs.get(id); if (old) URL.revokeObjectURL(old); coverURLs.delete(id);
+  await DB.put('books', b); renderLibrary();
+  const det = $('.modal [data-book="' + id + '"]'); if (det) { det.closest('.modal').close(); showDetails(id); }
+  toast('Couverture mise à jour.');
 }
 
 /* ================= book details sheet ================= */
@@ -1286,14 +1298,10 @@ async function showDetails(id) {
     ? [h('span', null, 'Supprimer le livre et ses ' + n + ' mots ?'), h('button', { class: 'btn small danger', onclick: async () => { await DB.del('books', id); await DB.del('files', id); await DB.del('kv', 'text:' + id); await DB.del('kv', 'pdftext:' + id); for (const v of await DB.byBook(id)) await DB.del('vocab', v.id); m.close(); renderLibrary(); toast('Livre supprimé.'); } }, 'Oui, supprimer'), h('button', { class: 'btn small', onclick: () => drawDel(false) }, 'Annuler')]
     : [h('button', { class: 'btn small ghost danger', onclick: () => drawDel(true) }, 'Supprimer de la bibliothèque')]));
   drawDel(false);
-  const setCover = async file => {
-    if (!file || !file.type.startsWith('image/')) return;
-    b.cover = await shrinkImage(file); const old = coverURLs.get(id); if (old) URL.revokeObjectURL(old); coverURLs.delete(id);
-    await save(); m.close(); showDetails(id); toast('Couverture mise à jour.');
-  };
+  const setCover = file => setBookCover(id, file);
   const coverIn = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: e => setCover(e.target.files[0]) });
-  const body = h('div', { class: 'pb', onpaste: e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/')); if (f && !e.target.closest('input,textarea')) { e.preventDefault(); setCover(f); } } },
-    h('div', { class: 'detail-top' }, coverEl(b, false),
+  const body = h('div', { class: 'pb', 'data-book': id, onpaste: e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/')); if (f && !e.target.closest('input,textarea')) { e.preventDefault(); setCover(f); } } },
+    h('div', { class: 'detail-top' }, h('div', { title: 'Glisse ou colle une image pour changer la couverture' }, coverEl(b, false)),
       h('div', { style: 'display:grid;gap:10px;min-width:0' },
         field('Titre', inp('title')), field('Auteur', inp('author')),
         h('div', { class: 'muted', style: 'font-size:13px' }, [b.publisher, b.date, b.isbn ? 'ISBN ' + b.isbn : '', b.format.toUpperCase()].filter(Boolean).join(' · ')),
@@ -2853,10 +2861,30 @@ $('#r-set').addEventListener('click', showSettings);
 $('#r-voc').addEventListener('click', () => { savePos(); showVocab({ bookId: R.book.id, from: 'reader' }); });
 let dragDepth = 0; const dropHint = h('div', { class: 'drop-hint', hidden: true }, 'Dépose ton livre (EPUB, MOBI, AZW3, PDF, TXT…)');
 document.body.append(dropHint);
-addEventListener('dragenter', e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { dragDepth++; dropHint.hidden = false; } });
+addEventListener('dragenter', e => {
+  if (![...(e.dataTransfer?.types || [])].includes('Files')) return;
+  const items = [...(e.dataTransfer.items || [])]; const allImg = items.length && items.every(it => (it.type || '').startsWith('image/'));
+  dropHint.textContent = allImg ? ($('.modal [data-book]') ? 'Dépose l\'image : elle devient la couverture' : 'Dépose l\'image sur un livre pour en faire sa couverture') : 'Dépose ton livre (EPUB, MOBI, AZW3, PDF, TXT…)';
+  dropHint.classList.toggle('img', !!allImg && !$('.modal [data-book]'));
+  dragDepth++; dropHint.hidden = false;
+});
+addEventListener('dragover', e => {
+  const card = e.target.closest && e.target.closest('.book-card'); $$('.book-card.drop-on').forEach(c => c !== card && c.classList.remove('drop-on')); if (card && dropHint.classList.contains('img')) card.classList.add('drop-on');
+});
 addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropHint.hidden = true; } });
 addEventListener('dragover', e => e.preventDefault());
-addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; dropHint.hidden = true; if (e.dataTransfer.files.length) { show('lib'); importFiles([...e.dataTransfer.files]); } });
+addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; dropHint.hidden = true; $$('.book-card.drop-on').forEach(c => c.classList.remove('drop-on'));
+  const files = [...e.dataTransfer.files];
+  if (!files.length) { if (e.dataTransfer.getData('text/uri-list')) toast('Enregistre d\'abord l\'image sur ton appareil (ou copie-la et colle-la dans la fiche), puis glisse le fichier.'); return; }
+  const imgs = files.filter(f => f.type.startsWith('image/')), others = files.filter(f => !f.type.startsWith('image/'));
+  if (imgs.length) {
+    const det = $('.modal [data-book]'), card = e.target.closest && e.target.closest('.book-card[data-id]');
+    const id = det ? det.dataset.book : card ? card.dataset.id : null;
+    if (id) setBookCover(id, imgs[0]); else toast('Pour changer une couverture, dépose l\'image sur le livre ou dans sa fiche.');
+  }
+  if (others.length) { show('lib'); importFiles(others); }
+});
 
 const SAMPLE = `第一章 雨天
 
