@@ -115,6 +115,7 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 36px 20px; text-align: center; color: var(--muted); }
 .book-card.drop-on .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
 .drop-hint.img { inset: auto 12px 12px; padding: 14px; background: var(--surface); }
+.drop-hint[hidden] { display: none; }
 .drop-hint { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--paper) 85%, transparent); display: grid; place-items: center; font-size: 18px; font-weight: 600; color: var(--accent); z-index: 80; pointer-events: none; }
 .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
 .foot a { color: inherit; }
@@ -162,7 +163,7 @@ body:has(#reader:not([hidden])) { background: var(--rbg); }
 .book ruby { ruby-position: under; -webkit-ruby-position: after; ruby-align: center; }
 .book.py-over ruby { ruby-position: over; -webkit-ruby-position: before; }
 .book ruby rt { font-family: var(--f-ui); font-size: calc(var(--pys) * 1em); font-weight: 500; line-height: 1.1; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
-.book.py-mono ruby rt { color: var(--muted); }
+.book.py-mono ruby rt { color: var(--rink); opacity: .78; }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 ::highlight(tts) { background-color: var(--accent-soft); color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: .25em; }
 .book .prep, .book section.part .prep { text-indent: 0; margin: -.4em 0 1.4em; font-family: var(--f-ui); font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; }
@@ -653,7 +654,8 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
   .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
-const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'tones', pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
 function applySettings() {
   const r = $('#reader');
   r.style.setProperty('--rs', settings.size + 'px');
@@ -1959,7 +1961,7 @@ function showSettings() {
         seg('pinyin', [[false, 'Masqué'], [true, 'Affiché']], v => setPinyin(v)),
         pySizeCtl(),
         seg('pyPos', [['under', 'En dessous'], ['over', 'Au-dessus']]),
-        seg('pyColor', [['tones', 'Couleurs des tons'], ['mono', 'Gris']])),
+        seg('pyColor', [['mono', 'Neutre'], ['tones', 'Couleurs des tons']])),
       h('div', { class: 'set-group' }, h('h3', null, 'Fond'), seg('paper', [['auto', 'Automatique'], ['sepia', 'Sépia'], ['night', 'Nuit']])),
       isTouch() ? null : h('div', { class: 'set-group' }, h('h3', null, 'Dictionnaire'), seg('mode', [['hover', 'Au survol'], ['click', 'Au clic']]),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Au survol : la définition suit la souris. Clique sur un mot pour figer le pop-up, puis appuie sur A pour l\'ajouter.'))));
@@ -2079,7 +2081,8 @@ function renderPop() {
     ${ents}${alts}${chars}
     <div class="pf"><button class="btn small" data-act="prev" title="Commencer un caractère plus tôt">‹</button><button class="btn small" data-act="next" title="Commencer un caractère plus loin">›</button>
     <button class="btn small" data-act="ex" aria-expanded="${!!P.showEx}">Exemples</button>
-    <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>E</kbd> exemples</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>E</kbd></span>')}</div>
+    <button class="btn small" data-act="ai" title="Ouvre Claude avec cette phrase (question copiée aussi)">Claude ↗</button>
+    <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>E</kbd> exemples · <kbd>C</kbd> Claude</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>E</kbd> · <kbd>C</kbd></span>')}</div>
     <div class="sec ex" id="pop-ex" ${P.showEx ? '' : 'hidden'}></div>`;
   pop.classList.toggle('sheet', sheet);
   pop.classList.toggle('passive', !sheet && !P.pinned);
@@ -2127,7 +2130,17 @@ $('#pop').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'add') toggleSave(); else if (act === 'close') hidePop(); else if (act === 'prev') { P.pinned = true; shiftHit(-1); } else if (act === 'next') { P.pinned = true; shiftHit(1); }
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
+  else if (act === 'ai') askClaude();
 });
+function askClaude() {
+  if (!P.hit) return;
+  const word = P.results[P.sel].word, sent = sentenceFor(P.hit, word.length) || word;
+  const b = R.book || {};
+  const src = b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : '';
+  const q = `Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend. Sois concis.\n\n${sent}${src}`;
+  window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
+  try { navigator.clipboard.writeText(q).then(() => toast('Question copiée — colle-la dans Claude si elle n\u2019apparaît pas.'), () => {}); } catch {}
+}
 let moveRAF = 0, lastMove = null;
 document.addEventListener('mousemove', e => {
   if ($('#reader').hidden || isTouch() || settings.mode !== 'hover' || P.pinned) return;
@@ -2190,6 +2203,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && P.hit) hidePop();
   else if (e.key === 'Escape' && !$('#notepop').hidden) $('#notepop').hidden = true;
   else if ((e.key === 'a' || e.key === 'A') && P.hit) { e.preventDefault(); toggleSave(); }
+  else if ((e.key === 'c' || e.key === 'C') && P.hit && !e.ctrlKey && !e.metaKey) { e.preventDefault(); askClaude(); }
   else if ((e.key === 'e' || e.key === 'E') && P.hit) { e.preventDefault(); P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); setPinyin(!settings.pinyin); }
 });
