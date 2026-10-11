@@ -116,6 +116,9 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .book-card.drop-on .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
 .drop-hint.img { inset: auto 12px 12px; padding: 14px; background: var(--surface); }
 .drop-hint[hidden] { display: none; }
+#ask-sel { position: fixed; z-index: 70; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+#ask-sel[hidden] { display: none; }
+#ask-sel.sheet { font-size: 15px; padding: 10px 18px; left: 50% !important; transform: translateX(-50%); top: auto !important; bottom: calc(16px + env(safe-area-inset-bottom)); }
 .drop-hint { position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--paper) 85%, transparent); display: grid; place-items: center; font-size: 18px; font-weight: 600; color: var(--accent); z-index: 80; pointer-events: none; }
 .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
 .foot a { color: inherit; }
@@ -2132,18 +2135,50 @@ $('#pop').addEventListener('click', e => {
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (act === 'ai') askClaude();
 });
+function openClaude(q) {
+  window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
+  try { navigator.clipboard.writeText(q).then(() => toast('Question copiée — colle-la dans Claude si elle n’apparaît pas.'), () => {}); } catch {}
+}
+function bookSrc() { const b = R.book || {}; return b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : ''; }
 function askClaude() {
   if (!P.hit) return;
   const word = P.results[P.sel].word, sent = sentenceFor(P.hit, word.length) || word;
-  const b = R.book || {};
-  const src = b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : '';
-  const q = `Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend. Sois concis.\n\n${sent}${src}`;
-  window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
-  try { navigator.clipboard.writeText(q).then(() => toast('Question copiée — colle-la dans Claude si elle n\u2019apparaît pas.'), () => {}); } catch {}
+  openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend. Sois concis.\n\n${sent}${bookSrc()}`);
 }
+function askClaudeSel(text) {
+  const t = text.replace(/\s+/g, '').trim().slice(0, 1500);
+  openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi ce passage en français : sens, tournures ou expressions difficiles, registre, et ce qu'il sous-entend. Sois concis.\n\n${t}${bookSrc()}`);
+}
+const askSel = h('button', { id: 'ask-sel', class: 'btn small primary', hidden: true, onmousedown: e => e.preventDefault(), onclick: e => {
+  e.stopPropagation(); const t = String(getSelection()); askSel.hidden = true; if (t.trim()) askClaudeSel(t);
+} }, 'Demander à Claude ↗');
+document.body.append(askSel);
+function selInBook() {
+  const sel = getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount || $('#reader').hidden) return null;
+  const r = sel.getRangeAt(0); const book = $('#book');
+  if (!book.contains(r.commonAncestorContainer)) return null;
+  const t = String(sel).replace(/\s+/g, ''); if (t.length < 2 || !HAN.test(t)) return null;
+  return r;
+}
+let selT = 0;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(selT);
+  selT = setTimeout(() => {
+    const r = selInBook(); if (!r) { askSel.hidden = true; return; }
+    if (P.hit) hidePop();
+    const sheet = isTouch(); askSel.classList.toggle('sheet', sheet); askSel.hidden = false;
+    if (!sheet) {
+      const b = r.getBoundingClientRect(), w = askSel.offsetWidth;
+      let top = b.top - askSel.offsetHeight - 8; if (top < 8) top = b.bottom + 8;
+      askSel.style.left = Math.min(Math.max(8, b.left + b.width / 2 - w / 2), innerWidth - w - 8) + 'px'; askSel.style.top = top + 'px';
+    }
+  }, 150);
+});
+addEventListener('scroll', () => { if (!askSel.hidden && !isTouch()) { const r = selInBook(); if (!r) askSel.hidden = true; else { const b = r.getBoundingClientRect(); let top = b.top - askSel.offsetHeight - 8; if (top < 8) top = b.bottom + 8; askSel.style.top = top + 'px'; } } }, { passive: true });
+
 let moveRAF = 0, lastMove = null;
 document.addEventListener('mousemove', e => {
-  if ($('#reader').hidden || isTouch() || settings.mode !== 'hover' || P.pinned) return;
+  if ($('#reader').hidden || isTouch() || settings.mode !== 'hover' || P.pinned || e.buttons || !askSel.hidden) return;
   lastMove = e; if (moveRAF) return;
   moveRAF = requestAnimationFrame(() => {
     moveRAF = 0; const ev = lastMove;
