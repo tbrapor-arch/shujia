@@ -2955,6 +2955,9 @@ const SAMPLE = `第一章 雨天
   if (!(await DB.ok())) $('#storage-note').textContent = 'Attention : ce navigateur bloque le stockage local. Tes livres et ton vocabulaire seront perdus à la fermeture de la page.';
   else { try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {} }
   const books = await DB.all('books');
+  for (const b of books) { // books imported before titles were cleaned
+    if (/\s--\s/.test(b.title || '') || /^(unknown|未知|佚名|anonymous)$/i.test(b.author || '')) { Object.assign(b, cleanMeta(b.title, b.author)); await DB.put('books', b); }
+  }
   if (!books.length && !LS.get('seeded', false)) {
     const f = new File([SAMPLE], '雨天的书店 -- 示例 · Exemple.txt', { type: 'text/plain' }); f.sample = true;
     LS.set('seeded', true);
@@ -2963,7 +2966,8 @@ const SAMPLE = `第一章 雨天
   } else renderLibrary();
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
-  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) navigator.serviceWorker.register('sw.js'); } catch {}
+  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js');
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
 })();
 </script>
 
