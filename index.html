@@ -673,6 +673,16 @@ function nameParts(fileName) {
   const parts = base.split(/\s+--\s+/);
   return { title: (parts[0] || base).trim(), author: (parts.length > 2 ? parts[1] : '').trim() };
 }
+// "Hei Di Xue 黑的雪 -- 刘恒著 -- …" (Anna's Archive names) -> title 黑的雪, author 刘恒
+function cleanMeta(title, author) {
+  let t = String(title || '').trim(), a = String(author || '').trim();
+  const parts = t.split(/\s+--\s+/);
+  if (parts.length > 1) { t = parts[0]; if (!a || /^(unknown|未知|佚名|anonymous|n\/a)$/i.test(a)) a = parts[1] || ''; }
+  if (/^(unknown|未知|佚名|anonymous|n\/a)$/i.test(a)) a = '';
+  if (/[㐀-鿿]/.test(t)) t = t.replace(/^[A-Za-z][A-Za-z\s'’.-]*\s+(?=[㐀-鿿《])/, '').replace(/^《(.+)》$/, '$1');
+  a = a.replace(/^\s*[\[【(（][^\]】)）]{1,4}[\]】)）]\s*/, '').replace(/\s*(著|编著|編著|主编|主編|撰|著者)$/, '').trim();
+  return { title: t || String(title || '').trim(), author: a };
+}
 async function shrinkImage(blob, max = 520) {
   try {
     const bmp = await createImageBitmap(blob);
@@ -769,6 +779,7 @@ async function importFiles(files) {
       const meta = fmt === 'epub' ? await importEpub(file) : fmt === 'pdf' ? await importPdf(file) : fmt === 'mobi' ? await importMobi(file)
         : fmt === 'fb2' ? await importFb2(file) : fmt === 'docx' ? await importDocx(file) : fmt === 'html' ? await importHtml(file) : await importTxt(file);
       const pdfText = meta.pdfText; delete meta.pdfText;
+      Object.assign(meta, cleanMeta(meta.title, meta.author));
       const existing = (await DB.all('books')).find(b => b.title === meta.title && b.size === file.size);
       if (existing) { toast(`« ${meta.title} » est déjà dans ta bibliothèque.`); continue; }
       const book = Object.assign({ id: uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: file.name, sample: !!file.sample }, meta);
@@ -914,7 +925,37 @@ function splitAtAnchors(sections, toc) {
   newToc.forEach(t => { t.s = t.ns; delete t.ns; });
   return { sections: out, toc: newToc };
 }
+// books whose chapters are plain "第一章" lines inside a few big files: cut at those lines
+function splitAtChapterLines(sections) {
+  const BL = 'p,div,h1,h2,h3,h4,h5,h6,blockquote,li';
+  const marks = new Map(); let total = 0;
+  sections.forEach((sec, k) => {
+    const found = $$(BL, sec.el).filter(b => !b.querySelector(BL)).filter(b => { const t = norm(b.textContent); return t && t.length <= 30 && CHAP_RE.test(t); });
+    if (found.length) { marks.set(k, found); total += found.length; }
+  });
+  // only when chapters sit inside fewer, bigger files (otherwise the files already are the chapters)
+  if (total < 3 || total <= sections.filter(x => textLen(x.el) > 0).length) return null;
+  const out = [], toc = [];
+  sections.forEach((sec, k) => {
+    const found = marks.get(k);
+    if (!found) { out.push(sec); return; }
+    while (sec.el.children.length === 1 && /^(DIV|SECTION|BLOCKQUOTE)$/.test(sec.el.firstElementChild.tagName)) sec.el.firstElementChild.replaceWith(...sec.el.firstElementChild.childNodes);
+    const kids = [...sec.el.childNodes];
+    const topOf = el => { let n = el; while (n && n.parentNode !== sec.el) n = n.parentNode; return n ? kids.indexOf(n) : -1; };
+    const cuts = found.map(b => ({ b, i: topOf(b) })).filter(c => c.i >= 0);
+    const starts = [...new Set([0, ...cuts.map(c => c.i)])].sort((x, y) => x - y);
+    starts.forEach((st, j) => {
+      const el = document.createElement('section'); kids.slice(st, starts[j + 1] ?? kids.length).forEach(n => el.append(n));
+      const c = cuts.find(c => c.i === st);
+      if (c) { c.b.classList.add('chap-head'); toc.push({ title: norm(c.b.textContent), s: out.length, level: 0 }); }
+      out.push({ el, spine: sec.spine, href: sec.href });
+    });
+  });
+  return { sections: out, toc };
+}
 function finishBook(sections, toc, urls, pathIndex) {
+  let chapNote = '';
+  if (toc.length < 3) { const sp = splitAtChapterLines(sections); if (sp && sp.toc.length > toc.length) { sections = sp.sections; toc = sp.toc; chapNote = 'Chapitres repérés dans le texte.'; } }
   sections.forEach((s, k) => { s.len = textLen(s.el); s.el.dataset.i = k; });
   const nonEmpty = sections.filter(s => s.len > 0).length;
   // title detection always runs: it also marks chapter headings for styling
@@ -933,7 +974,7 @@ function finishBook(sections, toc, urls, pathIndex) {
   toc.forEach(t => sections[t.s] && sections[t.s].el.classList.add('starts'));
   // chapter label per section
   const before = []; let acc = 0; sections.forEach(s => { before.push(acc); acc += s.len; });
-  return { sections, toc, tocNote, urls, pathIndex: pathIndex || new Map(), before, total: Math.max(acc, 1) };
+  return { sections, toc, tocNote: tocNote || chapNote, urls, pathIndex: pathIndex || new Map(), before, total: Math.max(acc, 1) };
 }
 const CHAP_RE = /^(第[0-9０-９零〇一二三四五六七八九十百千万两]+[章节回卷集部篇幕]|序章|序言|序|楔子|引子|前言|尾声|後記|后记|番外|终章|終章|Chapter\s*\d+|CHAPTER\s*\d+)(\s|$|[：:、.．])/;
 async function parseFor(book, fileRec) {
@@ -1332,7 +1373,9 @@ async function showDetails(id) {
 /* ================= Douban / 博客來 page import ================= */
 const HEADERS = ['内容简介', '內容簡介', '作者简介', '作者簡介', '作者介紹', '作者介绍', '译者简介', '譯者簡介', '目录', '目錄', '序', '原文摘录', '豆瓣成员常用的标签', '喜欢读', '谁读这本书', '二手市场', '订阅关于', '短评', '书评', '詳細資料', '商品規格', '讀者評價', '推薦序', '得獎紀錄', '各界推薦', '試閱', '前言', '購物說明', '相关', '丛书信息', '论坛'];
 function parseBookPage(raw) {
-  const t = '\n' + raw.replace(/\r/g, '').replace(/[ \t 　]+/g, ' ').replace(/\n /g, '\n') + '\n';
+  let t = '\n' + raw.replace(/\r/g, '').replace(/[ \t 　]+/g, ' ').replace(/\n /g, '\n') + '\n';
+  // Douban glues the heading to the first label ("黑的雪作者: 刘恒"): put labels back on their own line
+  t = t.replace(/([^\n\s原合编編])(作者|著者|译者|譯者)\s*([:：])/g, '$1\n$2$3');
   const out = { source: /豆瓣|douban/i.test(t) ? 'Douban' : /博客來|books\.com\.tw/i.test(t) ? '博客來' : /readmoo|讀墨/i.test(t) ? 'Readmoo' : 'page' };
   const LABEL = /^\s*[^\s:：]{1,6}\s*[:：]/;
   const get = labels => {
@@ -1364,6 +1407,7 @@ function parseBookPage(raw) {
       let rest = t.slice(m.index + m[0].length);
       let end = rest.length;
       for (const hd of HEADERS) { if (names.includes(hd)) continue; const mm = new RegExp('\\n\\s*' + hd + '(?:[ ·.:：(（"“][^\\n]{0,40})?\\n').exec(rest); if (mm && mm.index < end) end = mm.index; }
+      const dots = /\n[^\n]{0,40}· · ·/.exec(rest); if (dots && dots.index < end) end = dots.index; // any Douban section heading
       let body = rest.slice(0, end).replace(/\(展开全部\)|（展开全部）|展开全部|看更多|顯示全部|收起/g, '').replace(/\n{3,}/g, '\n\n').trim();
       if (body.length > 8) return body.slice(0, 3000);
     }
