@@ -568,7 +568,7 @@ const Dict = {
     let e = this.index.get(w); if (e === undefined) return null;
     if (typeof e === 'number') e = [e];
     const out = e.map(i => parseEntry(this.lines[i]));
-    if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (rankOf(x.simp) - rankOf(y.simp))); }
+    if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (pyPref(w, y) - pyPref(w, x)) || (isMinor(x) - isMinor(y)) || (rankOf(x.simp) - rankOf(y.simp))); }
     return out.sort((x, y) => x.proper - y.proper);
   },
   lookup(str) {
@@ -630,8 +630,22 @@ function cedictParts(w) {
   return parts;
 }
 // synthetic entry for a word known to jieba but missing from CC-CEDICT (用人单位 = 用人 + 单位)
+// readings CC-CEDICT lists that are rare in modern text: archaic senses, radicals, "used in X" (听 yǐn, 厂 hǎn, 假 gēi…)
+const MINOR_RE = /archaic|obsolete|^old variant of|^used in |radical|^see |Japanese variant|\(old\)|^\(dialect\)|^\(Cantonese\)/i;
+const pyPref = (c, e) => (typeof PY_DEFAULT !== 'undefined' && PY_DEFAULT[c] === e.pinyin) ? 1 : 0;
+const isMinor = e => (e.defs.length && e.defs.every(d => MINOR_RE.test(d))) ? 1 : 0;
+// a polyphonic character whose reading depends on the word it sits in, when that word isn't in CC-CEDICT (藏民 zàngmín, 藏獒…)
+const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4']];
+function partEntry(x, word) {
+  const es = Dict.entries(x); if (!es) return null;
+  if (x.length === 1) for (const [c, re, py] of CTX_READ) if (x === c && re.test(word)) {
+    const hit = es.find(z => z.pinyin.toLowerCase() === py && /Tibet/.test(z.defs.join(' '))) || es.find(z => z.pinyin.toLowerCase() === py);
+    if (hit) return Object.assign({}, hit, { pinyin: py, proper: 0 });
+  }
+  return es.find(z => !z.proper) || es[0];
+}
 function compoundEntry(w, nw) {
-  const parts = cedictParts(nw || w).map(x => { const es = Dict.entries(x); return { w: x, e: es && (es.find(z => !z.proper) || es[0]) }; });
+  const parts = cedictParts(nw || w).map(x => ({ w: x, e: partEntry(x, nw || w) }));
   if (parts.some(p => !p.e)) return null;
   return { trad: w, simp: nw || w, pinyin: parts.map(p => p.e.pinyin).join(' '), defs: [parts.map(p => `${p.w} : ${p.e.defs.slice(0, 2).join(', ')}`).join(' + ')], cls: [], proper: 0, synthetic: true };
 }
@@ -2191,7 +2205,7 @@ document.addEventListener('mousemove', e => {
   if ($('#reader').hidden || isTouch() || settings.mode !== 'hover' || P.pinned || e.buttons || !askSel.hidden) return;
   lastMove = e; if (moveRAF) return;
   moveRAF = requestAnimationFrame(() => {
-    moveRAF = 0; const ev = lastMove;
+    moveRAF = 0; const ev = lastMove; if (P.pinned) return;
     const c = caretAt(ev.clientX, ev.clientY);
     if (!c) { clearTimeout(P.hideTimer); if (P.hit) P.hideTimer = setTimeout(() => { if (!P.pinned) hidePop(); }, 60); return; }
     clearTimeout(P.hideTimer);
@@ -2260,7 +2274,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 /* ================= pinyin mode ================= */
 // usual reading of very common characters when they stand alone (CC-CEDICT lists several)
 const PY_DEFAULT = {};
-('了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
+('屏ping2 累lei4 朴pu3 了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
   .split(' ').forEach(t => { const m = t.match(/^(.)(.+)$/u); PY_DEFAULT[m[1]] = m[2]; });
 function pickPinyin(w, es) {
   if (w.length === 1 && PY_DEFAULT[w]) return [PY_DEFAULT[w]];
@@ -2274,7 +2288,8 @@ function pinyinForWord(w, nw) {
   if (w.length === 1) return [null];
   const out = []; let i = 0;
   for (const part of cedictParts(nw)) {
-    const pe = Dict.entries(part); const p = pe && pickPinyin(w.slice(i, i + part.length), pe);
+    const pe = Dict.entries(part); const ctx = part.length === 1 && CTX_READ.some(([c, re]) => c === part && re.test(nw)) ? partEntry(part, nw) : null;
+    const p = ctx ? [ctx.pinyin] : pe && pickPinyin(w.slice(i, i + part.length), pe);
     if (p) out.push(...p); else for (let k = 0; k < part.length; k++) { const ce = Dict.entries(nw[i + k]); const cp = ce && pickPinyin(nw[i + k], ce); out.push(cp ? cp[0] : null); }
     i += part.length;
   }
