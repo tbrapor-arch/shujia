@@ -197,6 +197,12 @@ body:has(#reader:not([hidden])) { background: var(--rbg); }
 .prep-row .a { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .prep-row .a button { border: 0; background: var(--accent-soft); color: var(--accent); border-radius: 99px; width: 26px; height: 26px; font-weight: 700; padding: 0; }
 .prep-row .a button.saved { background: transparent; color: var(--seal); }
+.prep-row .ws { font-family: var(--f-serif); color: var(--muted); font-size: 14px; }
+.prep-row .ws b { font-weight: 400; color: var(--ink); }
+.prep-sub { padding: 0 0 8px 18px; border-left: 2px solid var(--line); margin: 0 0 10px 22px; }
+.prep-sub[hidden] { display: none; }
+.prep-sub .prep-row:last-child { border-bottom: 0; }
+.prep-sub .prep-row .w { font-size: 19px; }
 .tts { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: flex; justify-content: center; padding: 0 8px calc(10px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
 .tts-in { pointer-events: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 14px; padding: 8px 10px; max-width: 100%; font-size: 13px; }
 .tts-in .play { width: 42px; height: 38px; justify-content: center; font-size: 15px; }
@@ -2361,7 +2367,7 @@ function addPrepButtons() {
   R.data.toc.forEach((t, i) => {
     if (!isLeafEntry(i)) return;
     const sec = R.data.sections[t.s] && R.data.sections[t.s].el; if (!sec || sec.querySelector('.prep')) return;
-    const btn = h('div', { class: 'prep' }, h('button', { onclick: e => { e.stopPropagation(); showPrep(i); } }, '预习 · mots rares de ce chapitre'));
+    const btn = h('div', { class: 'prep' }, h('button', { onclick: e => { e.stopPropagation(); showPrep(i); } }, '预习 · caractères rares et 成语 du chapitre'));
     const head = sec.querySelector('.chap-head, h1, h2, h3, h4');
     if (head && head.parentNode) head.after(btn); else sec.prepend(btn);
   });
@@ -2408,11 +2414,16 @@ async function showPrep(i) {
   const saved = new Set((await DB.byBook(book.id)).map(v => v.simp));
   const draw = () => {
     const byLv = settings.prepRank === 'level', lvName = sys === 'tw' ? 'TOCFL' : 'HSK';
-    const words = all.filter(x => byLv ? x.off : x.r > settings.prepRank).sort((p, q) => q.r - p.r || q.n - p.n).slice(0, 25);
-    const crit = byLv ? `un caractère hors ${lvName}` : `un caractère de rang > ${fmtN(settings.prepRank)}`;
-    info.textContent = words.length
-      ? `${words.length} mot${words.length > 1 ? 's' : ''} avec ${crit}. Touche un mot pour sa phrase.`
-      : `Aucun mot avec ${crit}.`;
+    const isRare = c => HAN.test(c) && (byLv ? levelOfKey(keyOf(c, sys), sys) === 8 : charRank(c, sys) > settings.prepRank);
+    const cmap = new Map();
+    for (const x of all) for (const c of new Set(x.w)) if (isRare(c)) {
+      const o = cmap.get(c) || { c, n: 0, words: [], r: charRank(c, sys) }; o.n += x.n; o.words.push(x); cmap.set(c, o);
+    }
+    const chars = [...cmap.values()].sort((p, q) => q.r - p.r || q.n - p.n).slice(0, 40);
+    const crit = byLv ? `hors ${lvName}` : `de rang > ${fmtN(settings.prepRank)}`;
+    info.textContent = chars.length
+      ? `${chars.length} caractère${chars.length > 1 ? 's' : ''} ${crit}. Touche un caractère pour ses mots et phrases.`
+      : `Aucun caractère ${crit}.`;
     const rowOf = x => {
       const es = x.es, e = es.find(z => !z.proper) || es[0];
       const sentEl = h('div', { class: 's', hidden: true, html: esc(x.sent).replace(esc(x.w), `<mark>${esc(x.w)}</mark>`) });
@@ -2431,10 +2442,23 @@ async function showPrep(i) {
     const onIdioms = tab === 'idioms';
     seg.hidden = onIdioms; listEl.hidden = onIdioms; idiomEl.hidden = !onIdioms;
     if (onIdioms) info.textContent = idioms.length ? `${idioms.length} 成语 dans ce chapitre, les plus rares d'abord. Touche-en un pour sa phrase.` : 'Aucun 成语 repéré dans ce chapitre.';
-    listEl.replaceChildren(...words.map(rowOf));
+    const charRow = o => {
+      const es = Dict.entries(o.c) || [], e = es.find(z => !z.proper) || es[0];
+      o.words.sort((p, q) => q.n - p.n);
+      const sub = h('div', { class: 'prep-sub', hidden: true }, ...o.words.map(rowOf));
+      const wl = o.words.slice(0, 4).map(x => x.w === o.c ? null : esc(x.w).replace(o.c, `<b>${o.c}</b>`)).filter(Boolean);
+      return h('div', { class: 'prep-row' },
+        h('div', { onclick: () => { sub.hidden = !sub.hidden; } },
+          h('span', { class: 'w' }, o.c),
+          h('span', { class: 'i' }, e ? h('span', { html: pinyinHTML(e.pinyin) }) : '', h('span', { class: 'd', html: e ? xref(e.defs.slice(0, 3).join('; ')) : '' }),
+            wl.length ? h('span', { class: 'ws', html: wl.join('　') + (o.words.length > 4 ? ' …' : '') }) : ''),
+          h('span', { class: 'a' }, '×' + o.n)),
+        sub);
+    };
+    listEl.replaceChildren(...chars.map(charRow));
     idiomEl.replaceChildren(...idioms.map(rowOf));
     tabs.replaceChildren(
-      h('button', { class: 'tab', role: 'tab', 'aria-selected': String(!onIdioms), onclick: () => { tab = 'rare'; draw(); } }, `Mots rares · ${words.length}`),
+      h('button', { class: 'tab', role: 'tab', 'aria-selected': String(!onIdioms), onclick: () => { tab = 'rare'; draw(); } }, `Caractères rares · ${chars.length}`),
       h('button', { class: 'tab', role: 'tab', 'aria-selected': String(onIdioms), onclick: () => { tab = 'idioms'; draw(); } }, `成语 · ${idioms.length}`));
   };
   let tab = 'rare';
