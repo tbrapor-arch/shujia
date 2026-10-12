@@ -145,6 +145,35 @@ body.reading { background: var(--rbg); }
 #r-pct[hidden] { display: none; }
 .goal-form { display: grid; gap: 12px; }
 .jr { display: grid; gap: 14px; }
+.tlist { display: grid; gap: 10px; }
+.tcard { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 14px; align-items: baseline; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.tcard:hover { border-color: var(--accent); }
+.tcard .no { font-family: var(--f-ui); color: var(--muted); font-size: 13px; }
+.tcard .zh { font-family: var(--f-serif); font-size: 22px; }
+.tcard .fr { color: var(--muted); }
+.tcard .n { font-size: 12.5px; color: var(--muted); grid-column: 2 / -1; }
+.tsec { margin: 22px 0 8px; }
+.tsec h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.trow { display: grid; grid-template-columns: minmax(90px, auto) 1fr auto; gap: 2px 14px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.trow .z { font-family: var(--f-serif); font-size: 22px; line-height: 1.25; }
+.trow .z small { font-size: 14px; color: var(--muted); margin-left: 4px; }
+.trow .i { display: grid; font-size: 14px; min-width: 0; }
+.trow .i .py { font-weight: 600; }
+.trow .i .fr { color: var(--muted); }
+.trow .a { display: flex; gap: 2px; }
+.trow .a button { border: 0; background: transparent; color: var(--muted); border-radius: 8px; padding: 4px 7px; cursor: pointer; font-size: 14px; }
+.trow .a button:hover { color: var(--accent); background: var(--accent-soft); }
+.trow .ex { grid-column: 1 / -1; }
+.tsent { font-family: var(--f-serif); font-size: 18px; line-height: 1.9; padding: 6px 0; }
+.tsent b { font-weight: 600; color: var(--accent); }
+.texpr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.texpr .z { font-family: var(--f-serif); font-size: 19px; }
+.texpr .py { font-size: 13.5px; font-weight: 600; margin-left: 8px; }
+.texpr .t { color: var(--muted); font-size: 14px; }
+.timp { display: grid; gap: 10px; }
+.timp textarea { min-height: 220px; font-family: var(--f-ui); font-size: 13px; }
+.timp .pv { max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.timp .pv .bad { color: #b4543a; }
 .jr .tot { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .jr .tot b { display: block; font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
 .jr .day h3 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
@@ -438,6 +467,7 @@ body.reading { background: var(--rbg); }
       <button class="tab" id="nav-lib" role="tab" aria-selected="true">Bibliothèque</button>
       <button class="tab" id="nav-voc" role="tab" aria-selected="false">Vocabulaire</button>
       <button class="tab" id="nav-log" role="tab" aria-selected="false">Journal</button>
+      <button class="tab" id="nav-thm" role="tab" aria-selected="false">Thèmes</button>
     </div>
     <button class="btn" id="sync-btn" title="Synchronisation Google Drive"><span id="sync-dot" aria-hidden="true">☁</span> <span id="sync-lbl">Synchro</span></button>
     <button class="btn primary" id="import-btn">＋ Importer un livre</button>
@@ -456,6 +486,7 @@ body.reading { background: var(--rbg); }
 </div>
 
 <div id="voc" class="wrap" hidden></div>
+<div id="thm" class="wrap" hidden></div>
 
 <div id="reader" hidden>
   <div class="rbar"><div class="rbar-in">
@@ -1983,6 +2014,183 @@ const Track = {
 for (const [obj, fn] of [[window, 'scrollTo'], [Element.prototype, 'scrollIntoView']]) {
   const orig = obj[fn]; obj[fn] = function (...a) { Track.jumpAt = performance.now(); return orig.apply(this, a); };
 }
+/* ================= thematic vocabulary (the user's own reference book, imported from OCR text; private: device + Drive) ================= */
+const Themes = {
+  async get() { const r = await DB.get('kv', 'themes'); return r && r.refs ? r : { k: 'themes', refs: {}, tomb: {} }; },
+  async put(st) { await DB.put('kv', st); window.Sync && Sync.dirty(); }
+};
+const PY_CH = 'a-zA-ZāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüÜĀÁǍÀĒÉĚÈĪÍǏÌŌÓǑÒŪÚǓÙ';
+const HANP = '㐀-鿿豈-﫿';
+// "药(藥)店" → simplified 药店, traditional 藥店; "(疾)病" → optional character kept as "(疾)病"
+function splitST(z) {
+  let s = '', t = '', prevParen = false;
+  const re = /\(([^()]*)\)|[^()]/g; let m;
+  while ((m = re.exec(z))) {
+    if (m[1] === undefined) { s += m[0]; t += m[0]; prevParen = false; continue; }
+    const x = m[1];
+    if (x.includes('/')) { const [a, b] = x.split('/'); s += `(${a})`; t += `(${b || a})`; }
+    else if (!prevParen && s && /^[㐀-鿿豈-﫿]+$/.test(x) && x.length <= s.replace(/\([^)]*\)/g, '').length) { t = t.slice(0, t.length - x.length) + x; prevParen = true; continue; }
+    else { s += `(${x})`; t += `(${x})`; }
+    prevParen = true;
+  }
+  return { s, t };
+}
+function parseThemePage(text) {
+  const out = { header: null, sections: [], expr: [], bad: [] };
+  let sec = null, last = null, mode = 'words', pendingTitle = '';
+  const secOf = n => { let x = out.sections.find(y => y.n === n); if (!x) { x = { n, title: '', entries: [], sentences: [] }; out.sections.push(x); } return x; };
+  const hanCount = l => (l.match(new RegExp(`[${HANP}]`, 'g')) || []).length;
+  const lines = text.replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  for (const l of lines) {
+    let m;
+    if ((m = l.match(new RegExp(`^([IVXLC]+)\\s*[.．]\\s*[-–—]?\\s*([${HANP}]+)\\s*([${PY_CH}\\s]*?)\\s*[:：]\\s*(.+)$`)))) {
+      out.header = { num: m[1], zh: m[2], py: m[3].trim(), fr: m[4].trim() }; last = null; continue;
+    }
+    if (/成语|成語/.test(l) && /歇后语|歇後語/.test(l) && hanCount(l) < 20) { mode = 'expr'; last = null; continue; }
+    if (/^\d{1,2}$/.test(l)) { if (mode === 'expr') continue; sec = secOf(l); if (pendingTitle) { sec.title = pendingTitle; pendingTitle = ''; } last = null; continue; }
+    if (/^[.…·\s]+$/.test(l)) continue;
+    if (mode === 'expr') {
+      if ((m = l.match(/^(\d{1,3})\s*[、,.，]\s*(.+)$/))) {
+        const body = m[2], k = body.search(new RegExp(`[${PY_CH}]`));
+        const zh = (k < 0 ? body : body.slice(0, k)).trim(), rest = k < 0 ? '' : body.slice(k);
+        const tl = rest.search(/\(T[lI1]\)/);
+        last = { zh, py: (tl < 0 ? '' : rest.slice(0, tl)).trim(), text: (tl < 0 ? rest : rest.slice(tl + 4)).trim() };
+        out.expr.push(last);
+      } else if (last) last.text += ' ' + l; else out.bad.push(l);
+      continue;
+    }
+    if ((m = l.match(new RegExp(`^(\\d{1,2})\\s*[、,.，]\\s*(.*[${HANP}].*)$`))) && hanCount(m[2]) >= m[2].replace(/\s/g, '').length * 0.5) {
+      const x = secOf(m[1]); x.sentences.push(m[2].replace(/\s+/g, '')); last = { sent: x }; continue;
+    }
+    if (last && last.sent && hanCount(l) >= l.replace(/\s/g, '').length * 0.6) { const ss = last.sent.sentences; ss[ss.length - 1] += l.replace(/\s+/g, ''); continue; }
+    if (new RegExp(`^[(${HANP}]`).test(l)) {
+      const sp = l.match(/\.{2,}|…+|\s[:：]\s?|[:：]\s|[:：]$/);
+      const head = sp ? l.slice(0, sp.index) : l, fr = sp ? l.slice(sp.index + sp[0].length).trim() : '';
+      const ZH = new RegExp(`^((?:[${HANP}]|\\([${HANP}/]+\\)|\\*|\\s)+)(.*)$`);
+      const vars = head.split(/\s*[,，、]\s*/).map(v => { const mm = v.match(ZH); return mm ? { zh: mm[1].replace(/\s|\*/g, ''), py: mm[2].trim() } : { zh: '', py: '' }; }).filter(v => new RegExp(`[${HANP}]`).test(v.zh));
+      const isPy = p0 => /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]|\/\//.test(p0);
+      if (vars.length && vars.every(v => isPy(v.py))) { if (!sec) sec = secOf('1'); last = { zh: vars.map(v => Object.assign(splitST(v.zh), { py: v.py })), fr }; sec.entries.push(last); continue; }
+      if (hanCount(l) <= 6 && new RegExp(`[${PY_CH}]{3,}`).test(l) && !vars.some(v => isPy(v.py))) { pendingTitle = l; continue; } // sub-heading like "疾病 La maladie"
+      out.bad.push(l); continue;
+    }
+    if (last && last.zh) { last.fr = (last.fr ? last.fr + ' ' : '') + l; continue; }
+    if (last && last.text !== undefined) { last.text += ' ' + l; continue; }
+    out.bad.push(l);
+  }
+  out.sections = out.sections.filter(x => x.entries.length || x.sentences.length);
+  return out;
+}
+function mergeThemePage(theme, pg) {
+  if (pg.header) Object.assign(theme, { num: theme.num || pg.header.num, zh: theme.zh || pg.header.zh, py: theme.py || pg.header.py, fr: theme.fr || pg.header.fr });
+  for (const x of pg.sections) {
+    let y = theme.sections.find(z => z.n === x.n); if (!y) { y = { n: x.n, title: x.title, entries: [], sentences: [] }; theme.sections.push(y); }
+    if (x.title && !y.title) y.title = x.title;
+    const have = new Set(y.entries.map(e => e.zh.map(v => v.s).join(',')));
+    for (const e of x.entries) if (!have.has(e.zh.map(v => v.s).join(','))) y.entries.push(e);
+    for (const s0 of x.sentences) if (!y.sentences.includes(s0)) y.sentences.push(s0);
+  }
+  theme.sections.sort((a, b) => +a.n - +b.n);
+  const hx = new Set(theme.expr.map(e => e.zh)); for (const e of pg.expr) if (!hx.has(e.zh)) theme.expr.push(e);
+  theme.pages = (theme.pages || 0) + 1;
+}
+const plainZh = z => z.replace(/[()]/g, ''); // "(凉)快" → 凉快
+const themeWords = th => th.sections.flatMap(x => x.entries.flatMap(e => e.zh.map(v => plainZh(v.s))));
+async function showThemes(openId) {
+  show('thm'); window.scrollTo(0, 0);
+  const st = await Themes.get(), refs = Object.values(st.refs).sort((a, b) => a.createdAt - b.createdAt);
+  const root = $('#thm'); root.replaceChildren();
+  root.append(h('nav', { class: 'topnav' },
+    h('div', { class: 'brand' }, h('span', { class: 'hz' }, '主题'), h('span', { class: 'py' }, 'Vocabulaire thématique')),
+    h('button', { class: 'btn primary', onclick: () => importThemePage() }, '＋ Importer une page'),
+    h('button', { class: 'btn', onclick: () => { show('lib'); renderLibrary(); } }, '← Bibliothèque')));
+  const all = refs.flatMap(r => r.themes.map(t => ({ r, t })));
+  if (openId) { const x = all.find(y => y.t.id === openId); if (x) return renderTheme(root, x.r, x.t); }
+  if (!all.length) {
+    root.append(h('div', { class: 'empty' },
+      h('p', { style: 'margin:0 0 10px;font-size:16px;color:var(--ink)' }, 'Relie ta base de vocabulaire thématique.'),
+      h('p', { style: 'margin:0 0 14px' }, 'Importe les pages de ton ouvrage de référence : photographie une page, copie son texte avec Google Lens (ou ouvre le scan avec Google Docs), puis colle-le ici. Tout reste privé : sur cet appareil et dans ton Google Drive.'),
+      h('button', { class: 'btn primary', onclick: () => importThemePage() }, 'Importer une première page')));
+    return;
+  }
+  for (const r of refs) {
+    root.append(h('h2', { style: 'font-family:var(--f-serif);margin:18px 0 10px;font-size:18px' }, r.title));
+    root.append(h('div', { class: 'tlist' }, ...r.themes.map(t => {
+      const nw = t.sections.reduce((a, x) => a + x.entries.length, 0), ns = t.sections.reduce((a, x) => a + x.sentences.length, 0);
+      return h('button', { class: 'tcard', onclick: () => showThemes(t.id) }, h('span', { class: 'no' }, t.num || '·'), h('span', null, h('span', { class: 'zh' }, t.zh || '—'), ' ', h('span', { class: 'fr' }, (t.py ? t.py + ' · ' : '') + (t.fr || ''))), h('span'),
+        h('span', { class: 'n' }, `${nw} mots · ${ns} phrases · ${t.expr.length} expressions · ${t.pages || 0} page${(t.pages || 0) > 1 ? 's' : ''}`));
+    })));
+  }
+}
+function renderTheme(root, ref, t) {
+  const words = [...new Set(themeWords(t))].filter(w => w.length > 0).sort((a, b) => b.length - a.length);
+  const bold = s0 => { let html = esc(s0); for (const w of words) html = html.split(esc(w)).join('\u0001' + esc(w) + '\u0002'); return html.replace(/\u0001+/g, '<b>').replace(/\u0002+/g, '</b>'); };
+  root.append(h('div', { class: 'vhead' }, h('button', { class: 'btn', onclick: () => showThemes() }, '← Thèmes'),
+    h('h1', null, `${t.num ? t.num + ' · ' : ''}${t.zh || ''} `, h('span', { style: 'font-family:var(--f-ui);font-size:15px;color:var(--muted);font-weight:400' }, (t.py ? t.py + ' · ' : '') + (t.fr || ''))),
+    h('button', { class: 'btn', onclick: async () => { if (!confirm('Supprimer ce thème de ta base ?')) return; const st = await Themes.get(); const r = st.refs[ref.id]; r.themes = r.themes.filter(x => x.id !== t.id); r.updatedAt = Date.now(); if (!r.themes.length) { delete st.refs[ref.id]; st.tomb[ref.id] = Date.now(); } await Themes.put(st); showThemes(); } }, 'Supprimer')));
+  for (const x of t.sections) {
+    const box = h('div', { class: 'tsec' }, h('h2', null, x.n + (x.title ? ' · ' + x.title : '')));
+    for (const e of x.entries) {
+      const exBox = h('div', { class: 'ex', hidden: true });
+      const main = e.zh[0], plain = plainZh(main.s), plainT = plainZh(main.t);
+      const sayB = h('button', { title: 'Écouter', onclick: () => speakZh(plain, sayB) }, '🔊');
+      box.append(h('div', { class: 'trow' },
+        h('span', { class: 'z' }, ...e.zh.flatMap((v, i) => [i ? '、' : '', v.s, v.t !== v.s ? h('small', null, v.t) : ''])),
+        h('span', { class: 'i' }, h('span', { class: 'py' }, e.zh.map(v => v.py).join(' · ')), h('span', { class: 'fr' }, e.fr)),
+        h('span', { class: 'a' }, ttsOK() ? sayB : '', h('button', { title: 'Phrases de tes livres', onclick: () => { exBox.hidden = !exBox.hidden; if (!exBox.hidden && !exBox.childNodes.length) showExamples(exBox, plain, [plain, plainT], '', null); } }, '例')),
+        exBox));
+    }
+    for (const s0 of x.sentences) { const b = h('button', { class: 'btn small', style: 'margin-left:6px;vertical-align:2px', onclick: () => speakZh(s0, b) }, '🔊'); box.append(h('div', { class: 'tsent' }, h('span', { html: bold(s0) }), ttsOK() ? b : '')); }
+    root.append(box);
+  }
+  if (t.expr.length) {
+    const box = h('div', { class: 'tsec' }, h('h2', null, '成语 · 歇后语'));
+    for (const e of t.expr) box.append(h('div', { class: 'texpr' }, h('span', { class: 'z' }, e.zh), h('span', { class: 'py' }, e.py), h('div', { class: 't' }, e.text)));
+    root.append(box);
+  }
+}
+async function importThemePage() {
+  const st = await Themes.get(), refs = Object.values(st.refs);
+  const ta = h('textarea', { id: 'th-in', placeholder: 'Colle ici le texte d\'une page (copié avec Google Lens ou Google Docs)…' });
+  const themeSel = h('select', { id: 'th-sel' }, h('option', { value: '' }, 'Thème : détecté sur la page (ou nouveau)'),
+    ...refs.flatMap(r => r.themes.map(t => h('option', { value: r.id + '|' + t.id }, `${r.title} › ${t.num || ''} ${t.zh || ''} ${t.fr || ''}`))));
+  const lastSel = LS.get('thLast', ''); if (lastSel && [...themeSel.options].some(o => o.value === lastSel)) themeSel.value = lastSel;
+  const refName = h('input', { type: 'text', id: 'th-ref', placeholder: 'Nom de l\'ouvrage (ex. Vocabulaire thématique)', value: refs[0] ? refs[0].title : '' });
+  const pv = h('div', { class: 'pv' }, h('span', { class: 'muted' }, 'Aperçu après collage.'));
+  let parsed = null;
+  const upd = () => {
+    parsed = parseThemePage(ta.value);
+    const nw = parsed.sections.reduce((a, x) => a + x.entries.length, 0), ns = parsed.sections.reduce((a, x) => a + x.sentences.length, 0);
+    pv.replaceChildren(
+      h('div', { style: 'margin-bottom:6px' }, h('b', null, parsed.header ? `Thème ${parsed.header.num} · ${parsed.header.zh} · ${parsed.header.fr}` : 'Pas de titre de thème sur cette page'), ` — ${nw} mots, ${ns} phrases, ${parsed.expr.length} expressions`),
+      ...parsed.sections.flatMap(x => [h('div', { class: 'muted', style: 'margin-top:6px' }, `§ ${x.n}${x.title ? ' · ' + x.title : ''}`),
+        ...x.entries.map(e => h('div', null, e.zh.map(v => `${v.s}${v.t !== v.s ? '(' + v.t + ')' : ''} ${v.py}`).join(' · ') + ' — ' + e.fr)),
+        ...x.sentences.map(s0 => h('div', null, '“ ' + s0))]),
+      ...parsed.expr.map(e => h('div', null, `${e.zh} ${e.py} — ${e.text}`)),
+      ...(parsed.bad.length ? [h('div', { class: 'bad', style: 'margin-top:8px' }, `${parsed.bad.length} ligne(s) non reconnue(s) — corrige-les dans le texte :`), ...parsed.bad.map(l => h('div', { class: 'bad' }, l))] : []));
+  };
+  ta.oninput = () => { clearTimeout(ta.t); ta.t = setTimeout(upd, 250); };
+  const save = async () => {
+    upd(); if (!parsed.sections.length && !parsed.expr.length) { toast('Rien de reconnu sur cette page.'); return; }
+    const st2 = await Themes.get(); let ref, theme;
+    if (themeSel.value && !parsed.header) { const [rid, tid] = themeSel.value.split('|'); ref = st2.refs[rid]; theme = ref && ref.themes.find(x => x.id === tid); }
+    if (!theme) {
+      const title = refName.value.trim() || 'Mon ouvrage';
+      ref = Object.values(st2.refs).find(r => r.title === title) || Object.values(st2.refs)[0];
+      if (!ref) { const id = uid(); ref = st2.refs[id] = { id, title, createdAt: Date.now(), themes: [] }; }
+      if (parsed.header) theme = ref.themes.find(x => x.num === parsed.header.num || x.zh === parsed.header.zh);
+      if (!theme && themeSel.value) { const [rid, tid] = themeSel.value.split('|'); const r2 = st2.refs[rid]; theme = r2 && r2.themes.find(x => x.id === tid); if (theme) ref = r2; }
+      if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); }
+    }
+    mergeThemePage(theme, parsed); ref.updatedAt = Date.now();
+    await Themes.put(st2); LS.set('thLast', ref.id + '|' + theme.id);
+    m.close(); toast('Page ajoutée.'); showThemes(theme.id);
+  };
+  const m = modal('Importer une page', h('div', { class: 'pb timp' },
+    h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Les entrées « 简(繁) pinyin …… sens », les phrases numérotées et les 成语 / 歇后语 sont reconnus. Une page sans titre de thème s\'ajoute au thème choisi.'),
+    refs.length ? null : h('label', { class: 'field' }, 'Ouvrage', refName), themeSel, ta, pv,
+    h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: save }, 'Ajouter à ma base'))));
+  setTimeout(() => ta.focus(), 50);
+}
 async function showJournal() {
   const [books, vocab] = await Promise.all([DB.all('books'), DB.all('vocab')]);
   const byId = new Map(books.map(b => [b.id, b])), days = new Map();
@@ -2390,6 +2598,17 @@ function openClaude(q) {
 }
 function bookSrc() { const b = R.book || {}; return b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : ''; }
 // pronounce the word in the pop-up with the same voice as 听 (the book's script picks zh-TW / zh-CN)
+function speakZh(w, btn) {
+  if (!ttsOK() || !w) return;
+  if (TTS.playing) ttsStop(true);
+  speechSynthesis.cancel();
+  if (!TTS.voice) TTS.voice = pickVoice();
+  const u = new SpeechSynthesisUtterance(w);
+  if (TTS.voice) { u.voice = TTS.voice; u.lang = TTS.voice.lang; } else u.lang = 'zh-CN';
+  u.rate = Math.min(1, settings.ttsRate || 1) * 0.9;
+  if (btn) { btn.classList.add('on'); u.onend = u.onerror = () => btn.classList.remove('on'); }
+  speechSynthesis.speak(u);
+}
 function sayWord() {
   if (!P.hit || !ttsOK()) return;
   const w = P.results[P.sel].word;
@@ -3344,6 +3563,21 @@ const Sync = {
       const state = JSON.stringify({ v: 1, at: Date.now(), books, vocab, tomb });
       await this.upload('shujia-state.json', new Blob([state], { type: 'application/json' }), 'application/json', sf && sf.id);
       await DB.put('kv', { k: 'tomb', map: tomb });
+      // thematic vocabulary: its own private file, newest version of each reference book wins
+      {
+        const tf = byName.get('shujia-themes.json');
+        const rt = tf ? await (await this.download(tf.id)).json() : { refs: {}, tomb: {} };
+        const lt = await Themes.get(), tt = Object.assign({}, rt.tomb || {});
+        for (const [k, v] of Object.entries(lt.tomb || {})) tt[k] = Math.max(tt[k] || 0, v);
+        const refs = {};
+        for (const id of new Set([...Object.keys(lt.refs), ...Object.keys(rt.refs || {})])) {
+          const a = lt.refs[id], b = (rt.refs || {})[id], w = !a ? b : !b ? a : ((b.updatedAt || 0) > (a.updatedAt || 0) ? b : a);
+          if (w && !(tt[id] && (w.updatedAt || 0) <= tt[id])) refs[id] = w;
+        }
+        const merged = { k: 'themes', refs, tomb: tt }, js = JSON.stringify({ refs, tomb: tt });
+        if (JSON.stringify({ refs: lt.refs, tomb: lt.tomb || {} }) !== js) { await DB.put('kv', merged); if (!$('#thm').hidden) showThemes(); }
+        if (!tf || JSON.stringify({ refs: rt.refs || {}, tomb: rt.tomb || {} }) !== js) await this.upload('shujia-themes.json', new Blob([js], { type: 'application/json' }), 'application/json', tf && tf.id);
+      }
       LS.set('lastSync', Date.now());
       this.setStatus('Synchronisé ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       if (changed && !$('#lib').hidden) renderLibrary();
@@ -3374,12 +3608,13 @@ $('#sync-btn').addEventListener('click', () => { if (Sync.enabled() && !Sync.tok
 
 /* ================= navigation & boot ================= */
 function show(view) {
-  for (const id of ['lib', 'voc', 'reader']) $('#' + id).hidden = id !== view;
+  for (const id of ['lib', 'voc', 'thm', 'reader']) $('#' + id).hidden = id !== view;
   document.body.classList.toggle('reading', view === 'reader');
   if (view !== 'reader') { hidePop(); ttsStop(true); $('#notepop').hidden = true; }
 }
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
 $('#nav-log').addEventListener('click', () => showJournal());
+$('#nav-thm').addEventListener('click', () => showThemes());
 $('#nav-lib').addEventListener('click', () => { show('lib'); renderLibrary(); });
 $('#import-btn').addEventListener('click', () => $('#file-in').click());
 $('#file-in').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
