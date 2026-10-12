@@ -633,8 +633,10 @@ const Dict = {
     let e = this.index.get(w); if (e === undefined) return null;
     if (typeof e === 'number') e = [e];
     const out = e.map(i => parseEntry(this.lines[i]));
-    if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (pyPref(w, y) - pyPref(w, x)) || (isMinor(x) - isMinor(y)) || (rankOf(x.simp) - rankOf(y.simp))); }
-    return out.sort((x, y) => x.proper - y.proper);
+    if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (pyPref(w, y) - pyPref(w, x)) || (isMinor(x) - isMinor(y)) || (readPref(y) - readPref(x)) || (rankOf(x.simp) - rankOf(y.simp))); }
+    // words with several readings (便宜, 东西, 结果, 妻子…): the usual one has more senses or the neutral tone
+    const sc = e => (WORD_PY[w] === e.pinyin ? 100 : 0) + e.defs.length + (/5/.test(e.pinyin) ? 0.5 : 0) - (isMinor(e) ? 50 : 0);
+    return out.sort((x, y) => (x.proper - y.proper) || (sc(y) - sc(x)));
   },
   lookup(str) {
     const out = [];
@@ -698,6 +700,10 @@ function cedictParts(w) {
 // readings CC-CEDICT lists that are rare in modern text: archaic senses, radicals, "used in X" (听 yǐn, 厂 hǎn, 假 gēi…)
 const MINOR_RE = /archaic|obsolete|^old variant of|^used in |radical|^see |Japanese variant|\(old\)|^\(dialect\)|^\(Cantonese\)/i;
 const pyPref = (c, e) => (typeof PY_DEFAULT !== 'undefined' && PY_DEFAULT[c] === e.pinyin) ? 1 : 0;
+// most frequent reading of polyphonic characters, weighted by how often the words using each reading occur (CC-CEDICT × jieba frequencies, computed offline)
+const READ_MAIN = {}; '丧sang4 中zhong1 为wei2 么me5 亟ji2 亲qin1 什shen2 仆pu2 仇chou2 仔zi3 令ling4 价jia4 会hui4 传chuan2 伯bo2 伽jia1 佃dian4 作zuo4 佣yong1 供gong1 侧ce4 俊jun4 倒dao3 倥kong3 假jia3 冠guan4 冲chong1 凉liang2 几ji3 凹ao1 分fen1 切qie4 划hua4 创chuang4 刨bao4 别bie2 刷shua1 刹cha4 刺ci4 削xue1 剥bo1 剿jiao3 劈pi1 劲jin4 勒le4 化hua4 匮kui4 卒zu2 占zhan4 卡ka3 参can1 叉cha1 发fa1 句ju4 叨dao1 只zhi3 叶ye4 号hao4 吁yu4 合he2 吐tu3 吓xia4 吗ma2 否fou3 吧ba1 吭keng1 吱zhi1 呀ya1 呐na4 呒m2 呗bai4 呛qiang4 呢ni2 呵he1 呶nao2 咀ju3 咋ze2 和he2 咔ka1 咧lie3 咯ge1 咳ke2 哄hong1 哇wa1 哈ha1 哑ya3 哗hua2 哦e2 哩li5 哪na3 哺bu3 哼heng1 唉ai1 唯wei2 啊a1 啦la1 喂wei4 喇la3 喷pen1 喽lou2 嗳ai3 嘎ga1 囤tun2 囱cong1 圈quan1 圜huan2 圣sheng4 地di4 场chang3 坊fang1 垛duo3 堡bao3 夫fu1 夯hang1 头tou2 夹jia1 奄yan3 奇qi2 奔ben1 好hao3 妻qi1 姥lao3 娜nuo2 娩mian3 宿su4 少shao3 尺chi3 尾wei3 尿niao4 屏ping2 属shu3 岗gang3 崭zhan3 差cha1 帖tie3 庑wu3 底di3 度du4 弄nong4 弟di4 弹dan4 强qiang2 当dang1 待dai4 怔zheng4 怼dui4 恶e4 戆gang4 扁bian3 扇shan4 扎zha1 打da3 扫sao3 扳ban1 把ba3 折zhe2 抢qiang3 抹mo3 担dan1 拉la1 拓tuo4 拚pan4 拽zhuai4 拾shi2 挑tiao3 挡dang3 捋luo1 掖ye4 掺chan1 揣chuai3 揾wen4 搁ge1 搂lou3 摸mo1 撇pie1 撒sa1 撮cuo1 操cao1 攒zan3 教jiao4 敛lian3 散san4 数shu4 斗dou4 旄mao2 旋xuan2 暴bao4 曾ceng2 服fu2 朝chao2 末mo4 术shu4 朴pu3 杈cha4 杓shao2 杠gang4 板ban3 柏bai3 柜gui4 查cha2 校xiao4 桁heng2 桡rao2 档dang4 椎zhui1 楂zha1 楞leng2 楷kai3 榜bang3 槛kan3 模mo2 横heng2 欸ai3 正zheng4 歪wai1 殷yin1 比bi3 汤tang1 沓ta4 沙sha1 没mei2 沤ou4 泡pao4 泥ni2 洇yin1 浅qian3 浆jiang1 涌yong3 涡wo1 涨zhang3 淋lin2 混hun4 渐jian4 渠qu2 湮yan1 溜liu1 溺ni4 漂piao1 濯zhuo2 瀑pu4 炮pao4 炸zha4 煞sha4 熨yun4 熬ao2 率lu:4 王wang2 玢fen1 甚shen4 甬yong3 甭beng2 症zheng4 瘅dan4 监jian1 盛sheng4 相xiang1 省sheng3 看kan4 眯mi1 着zhe5 石shi2 磕ke1 磨mo2 禅chan2 种zhong3 秤cheng4 称cheng1 稽ji1 空kong1 窨yin4 窾kuan3 答da2 粘nian2 糊hu2 糜mi2 系xi4 累lei3 絜xie2 纤xian1 约yue1 结jie2 络luo4 绰chuo4 绷beng1 综zong1 缀zhui4 缉ji1 罢ba4 翘qiao2 耙pa2 耶ye2 背bei4 胖pang4 脏zang4 脚jiao3 脯pu2 腊la4 膀bang3 膏gao1 臊sao4 臭chou4 艮gen4 色se4 艾ai4 茄qie2 草cao3 荫yin1 莘shen1 莞wan3 莩piao3 菌jun1 菲fei3 落luo4 蒙meng2 蓼liao3 蔓man4 蕃fan1 薄bo2 藏cang2 蜇zhe2 行xing2 衩cha3 衰shuai1 裨bi4 褪tui4 褶zhe3 要yao4 见jian4 观guan1 觉jue2 角jiao3 解jie3 识shi2 语yu3 说shuo1 读du2 谩man4 豁huo4 貉he2 贲ben1 赚zhuan4 足zu2 跂qi3 跄qiang4 跑pao3 蹲dun1 转zhuan3 辟pi4 边bian1 过guo4 还hai2 这zhe4 远yuan3 追zhui1 通tong1 逮dai4 那na4 都du1 酢zuo4 重zhong4 量liang4 钉ding1 钻zuan1 铛dang1 铣xi3 铤ting3 铮zheng1 锯ju4 镏liu2 镐gao3 镪qiang1 长zhang3 间jian1 闷men4 阿a1 陂bei1 陆lu4 降jiang4 隆long2 隐yin3 隽juan4 难nan2 雀que4 雨yu3 露lu4 靓liang4 靡mi3 页ye4 顷qing3 颏ke1 食shi2 饮yin3 馏liu2 驮tuo2 骑qi2 鲜xian1 鹄hu2 龈yin2 龟gui1'.split(' ').forEach(t => { READ_MAIN[t[0]] = t.slice(1); });
+const WORD_PY = { 地方: 'di4 fang5', 生意: 'sheng1 yi5', 教授: 'jiao4 shou4', 所长: 'suo3 zhang3', 到了: 'dao4 le5', 都会: 'dou1 hui4', 不了: 'bu4 liao3', 起来: 'qi3 lai5' };
+const readPref = e => READ_MAIN[e.simp] === e.pinyin.toLowerCase() ? 1 : 0;
 const isMinor = e => (e.defs.length && e.defs.every(d => MINOR_RE.test(d))) ? 1 : 0;
 // a polyphonic character whose reading depends on the word it sits in, when that word isn't in CC-CEDICT (藏民 zàngmín, 藏獒…)
 const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4']];
@@ -2787,7 +2793,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 /* ================= pinyin mode ================= */
 // usual reading of very common characters when they stand alone (CC-CEDICT lists several)
 const PY_DEFAULT = {};
-('屏ping2 累lei4 朴pu3 了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
+('削xiao1 约yue1 弄nong4 混hun4 逮dai3 屏ping2 累lei4 朴pu3 了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
   .split(' ').forEach(t => { const m = t.match(/^(.)(.+)$/u); PY_DEFAULT[m[1]] = m[2]; });
 function pickPinyin(w, es) {
   if (w.length === 1 && PY_DEFAULT[w]) return [PY_DEFAULT[w]];
@@ -2828,11 +2834,11 @@ function annotate(sec) {
       if (buf) { frag.append(buf); buf = ''; }
       let len = 1, pys = null, idiom = false;
       if (plan.has(i)) [len, pys, idiom] = plan.get(i);
-      const out = idiom && pys ? h('span', { class: 'cy' }) : frag; if (out !== frag) frag.append(out);
-      else for (let k = Math.min(Dict.maxLen, d.length - i); k >= 1; k--) {
+      else for (let k = Math.min(Dict.maxLen, d.length - i); k >= 1; k--) { // no word list yet: longest dictionary match
         const w = d.slice(i, i + k), es = Dict.entries(w);
         if (es) { const p = pickPinyin(w, es); if (p) { len = k; pys = p; break; } }
       }
+      const out = idiom && pys ? h('span', { class: 'cy' }) : frag; if (out !== frag) frag.append(out);
       for (let k = 0; k < len; k++) {
         const ch = d[i + k];
         if (!pys) { frag.append(ch); continue; }
