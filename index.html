@@ -144,6 +144,14 @@ body.reading { background: var(--rbg); }
 #r-pct { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font: 500 11px var(--f-ui); color: var(--muted); opacity: .7; pointer-events: none; z-index: 30; font-variant-numeric: tabular-nums; }
 #r-pct[hidden] { display: none; }
 .goal-form { display: grid; gap: 12px; }
+.jr { display: grid; gap: 14px; }
+.jr .tot { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.jr .tot b { display: block; font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+.jr .day h3 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.jr .row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 14px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: baseline; font-size: 14px; }
+.jr .row .t { font-family: var(--f-serif); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jr .row .n { font-variant-numeric: tabular-nums; text-align: right; }
+.jr .row .w { color: var(--muted); font-size: 12.5px; text-align: right; min-width: 64px; }
 .goal-form .row2 { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .goal-form .row2 > label { flex: 1; min-width: 160px; }
 .rprog { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--accent); width: 0; transition: width .2s; }
@@ -422,6 +430,7 @@ body.reading { background: var(--rbg); }
     <div class="tabs" role="tablist">
       <button class="tab" id="nav-lib" role="tab" aria-selected="true">Bibliothèque</button>
       <button class="tab" id="nav-voc" role="tab" aria-selected="false">Vocabulaire</button>
+      <button class="tab" id="nav-log" role="tab" aria-selected="false">Journal</button>
     </div>
     <button class="btn" id="sync-btn" title="Synchronisation Google Drive"><span id="sync-dot" aria-hidden="true">☁</span> <span id="sync-lbl">Synchro</span></button>
     <button class="btn primary" id="import-btn">＋ Importer un livre</button>
@@ -1889,7 +1898,7 @@ async function openBook(id) {
   try { data = await parseFor(book, file); }
   catch (e) { console.error(e); if (my === openSeq) bookEl.replaceChildren(h('div', { class: 'loading' }, `Lecture impossible : ${e.message}`)); return; }
   if (my !== openSeq) { data.urls.forEach(u => URL.revokeObjectURL(u)); return; } // another book was opened meanwhile
-  Goal.reset(); R.data = data; R.book = book;
+  Goal.reset(); Track.reset(); R.data = data; R.book = book;
   if (book.status === 'toread') { book.status = 'reading'; if (!book.startDate) book.startDate = today(); }
   book.lastRead = Date.now(); DB.put('books', book);
   const vocab = await DB.byBook(id); R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
@@ -1934,6 +1943,57 @@ function chapterOf(si) {
   if (e.level > 0) { for (let j = k - 1; j >= 0; j--) if (toc[j].level < e.level) { label = toc[j].title + ' › ' + label; break; } }
   return { idx: k, label };
 }
+/* ================= reading journal: characters actually read ================= */
+const DEV = (() => { let d = LS.get('dev', ''); if (!d) { d = uid(); LS.set('dev', d); } return d; })();
+const dayKey = (t = new Date()) => t.toLocaleDateString('sv-SE');
+function ivAdd(list, a, b) { // merge [a,b) into sorted disjoint intervals; returns how many characters were new
+  let added = b - a; const out = [];
+  for (const [x, y] of list || []) {
+    if (y < a || x > b) { out.push([x, y]); continue; }
+    added -= Math.max(0, Math.min(b, y) - Math.max(a, x)); a = Math.min(a, x); b = Math.max(b, y);
+  }
+  out.push([a, b]); out.sort((p, q) => p[0] - q[0]);
+  return [out, Math.max(0, added)];
+}
+const Track = {
+  SPEED: 40, CAP: 3000, // a fast reader: ≤ 40 characters a second; at most ~1 big screen banked while reading still
+  last: null, t: 0, budget: 0, jumpAt: 0,
+  reset() { this.last = null; this.budget = 0; },
+  step(pos) {
+    const now = performance.now();
+    if (!R.book || R.peek || document.hidden || this.last == null || now - this.jumpAt < 1200) { this.last = pos; this.t = now; return; }
+    const dt = Math.min(600, (now - this.t) / 1000); this.t = now;
+    this.budget = Math.min(this.CAP, this.budget + dt * this.SPEED);
+    const d = pos - this.last; this.last = pos;
+    if (d <= 0) return; // going back: rereading is never counted twice anyway
+    const c = Math.min(d, this.budget); this.budget -= c; // skimming faster than that is not reading
+    if (c < 1) return;
+    const b = R.book, [iv, added] = ivAdd(b.readIv, pos - d, pos - d + c); b.readIv = iv;
+    if (added >= 1) { const k = dayKey(); b.log = b.log || {}; const day = b.log[k] = b.log[k] || {}; day[DEV] = Math.round((day[DEV] || 0) + added); }
+  }
+};
+for (const [obj, fn] of [[window, 'scrollTo'], [Element.prototype, 'scrollIntoView']]) {
+  const orig = obj[fn]; obj[fn] = function (...a) { Track.jumpAt = performance.now(); return orig.apply(this, a); };
+}
+async function showJournal() {
+  const [books, vocab] = await Promise.all([DB.all('books'), DB.all('vocab')]);
+  const byId = new Map(books.map(b => [b.id, b])), days = new Map();
+  const cell = (k, id) => { const d = days.get(k) || new Map(); days.set(k, d); const c = d.get(id) || { chars: 0, words: 0 }; d.set(id, c); return c; };
+  for (const b of books) for (const [k, devs] of Object.entries(b.log || {})) { const n = Object.values(devs).reduce((x, y) => x + y, 0); if (n) cell(k, b.id).chars += n; }
+  for (const v of vocab) if (v.addedAt && byId.has(v.bookId)) cell(dayKey(new Date(v.addedAt)), v.bookId).words++;
+  const keys = [...days.keys()].sort().reverse();
+  const sum = since => { let c = 0, w = 0; for (const k of keys) if (k >= since) for (const x of days.get(k).values()) { c += x.chars; w += x.words; } return [c, w]; };
+  const d7 = dayKey(new Date(Date.now() - 6 * 864e5)), m1 = dayKey().slice(0, 8) + '01', y1 = dayKey().slice(0, 5) + '01-01';
+  const tot = (label, [c, w]) => h('div', null, h('b', null, fmtN(c)), `${label} · ${w} mot${w > 1 ? 's' : ''}`);
+  const fmtDay = k => new Date(k + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  modal('Journal de lecture', h('div', { class: 'pb jr' },
+    h('div', { class: 'tot' }, tot('7 derniers jours', sum(d7)), tot('ce mois', sum(m1)), tot('cette année', sum(y1))),
+    keys.length ? null : h('p', { class: 'muted', style: 'margin:0' }, 'Rien encore : le journal compte les caractères que tu lis à partir de maintenant.'),
+    ...keys.slice(0, 120).map(k => h('div', { class: 'day' }, h('h3', null, fmtDay(k)),
+      ...[...days.get(k)].sort((p, q) => q[1].chars - p[1].chars).map(([id, x]) => h('div', { class: 'row' },
+        h('span', { class: 't' }, byId.get(id).title), h('span', { class: 'n' }, x.chars ? fmtN(x.chars) + ' 字' : '—'), h('span', { class: 'w' }, x.words ? `+${x.words} mot${x.words > 1 ? 's' : ''}` : ''))))),
+    h('p', { class: 'muted', style: 'margin:0;font-size:12.5px' }, 'Seul le texte parcouru en lisant compte : pas les sauts (table des matières, recherche…), pas le défilement trop rapide, et un passage relu ne compte qu\'une fois.')));
+}
 let scrollRAF = 0;
 function onScroll() {
   if (!R.data || $('#reader').hidden) return;
@@ -1945,6 +2005,7 @@ function onScroll() {
     const prog = (R.data.before[si] + r * R.data.sections[si].len) / R.data.total;
     const pos = R.data.before[si] + r * R.data.sections[si].len;
     const g = Goal.status(pos), chap = chapterOf(si).label;
+    Track.step(Goal.posOnScreen(pos));
     if (g) $('#r-chap').replaceChildren(h('span', { class: 'goal' }, g), ' · ' + chap); else $('#r-chap').textContent = chap;
     $('#r-prog').style.width = (prog * 100).toFixed(1) + '%';
     const pe = $('#r-pct'); pe.hidden = false; pe.textContent = Math.floor(prog * 100) + ' %';
@@ -2671,7 +2732,7 @@ async function showPrep(i) {
   const idioms = all.filter(x => x.w.length >= 4 && isIdiom(x.nw, x.es)).sort((p, q) => q.r - p.r);
   const listEl = h('div', { class: 'prep-list' });
   const info = h('p', { class: 'muted', style: 'margin:0;font-size:13.5px' });
-  const saved = new Set((await DB.byBook(book.id)).map(v => v.simp));
+  const vlist = await DB.byBook(book.id), saved = new Set(vlist.map(v => v.simp));
   const draw = () => {
     const byLv = settings.prepRank === 'level', lvName = sys === 'tw' ? 'TOCFL' : 'HSK';
     const isRare = c => HAN.test(c) && (byLv ? levelOfKey(keyOf(c, sys), sys) === 8 : charRank(c, sys) > settings.prepRank);
@@ -2728,7 +2789,23 @@ async function showPrep(i) {
     settings.prepRank = v; LS.set('settings', settings); $$('button', seg).forEach(b2 => b2.setAttribute('aria-pressed', String(b2 === e.currentTarget))); draw(); } }, v === 'level' ? `hors ${sys === 'tw' ? 'TOCFL' : 'HSK'}` : 'rang > ' + fmtN(v))));
   draw();
   const m = modal(`预习 · ${label}`, h('div', { class: 'pb' }, tabs, info, seg, listEl, idiomEl,
-    h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: () => { m.close(); goSection(entry.s); } }, 'Aller au début du chapitre'))));
+    h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: () => { m.close(); goSection(entry.s); } }, 'Aller au début du chapitre'),
+      h('button', { class: 'btn', title: 'Copie le chapitre et tes mots, puis ouvre Claude', onclick: () => chapterSummary(i, vlist) }, 'Résumé avec mes mots ↗'))));
+}
+function chapterSummary(i, vlist) {
+  const d = R.data, b = R.book, [a, z] = entryRange(i), label = chapterIn(d, d.toc[i].s).label;
+  let text = ''; for (let k = a; k < z; k++) for (const bl of leafBlocks(d.sections[k].el)) { const t = plainText(bl); if (t) text += t + '\n'; }
+  const words = [...new Set(vlist.filter(v => v.section >= a && v.section < z).map(v => v.word))];
+  const ask = `Je lis 《${b.title}》${b.author ? '（' + b.author + '）' : ''} en chinois, niveau avancé. Voici le chapitre « ${label} ».
+
+Écris en chinois un résumé de ce chapitre (300 à 500 字), dans une langue naturelle et littéraire.` + (words.length ? `
+Réutilise ceux de ces mots que j'ai relevés quand ils s'y prêtent naturellement, avec le sens qu'ils ont dans le chapitre : ${words.join('、')}.
+N'en force aucun : laisse de côté ceux qui ne trouvent pas leur place. Après le résumé, liste les mots utilisés.` : '') + `
+
+${text}`;
+  // copy first (needs the page focused), then open Claude
+  const done = () => { toast(`Chapitre${words.length ? ` et ${words.length} mot${words.length > 1 ? 's' : ''}` : ''} copiés : colle dans Claude.`); window.open('https://claude.ai/new', '_blank', 'noopener'); };
+  try { navigator.clipboard.writeText(ask).then(done, () => toast('Copie impossible dans ce navigateur.')); } catch { toast('Copie impossible dans ce navigateur.'); }
 }
 
 /* ================= read aloud (听) ================= */
@@ -3159,7 +3236,11 @@ const Sync = {
     if (!a) return b; if (!b) return a;
     const meta = (b.updatedAt || 0) > (a.updatedAt || 0) ? b : a;
     const pos = (b.posAt || 0) > (a.posAt || 0) ? b : a;
-    return Object.assign({}, meta, { pos: pos.pos, progress: pos.progress, posAt: pos.posAt, lastRead: Math.max(a.lastRead || 0, b.lastRead || 0) });
+    let iv = a.readIv || []; for (const [x, y] of b.readIv || []) iv = ivAdd(iv, x, y)[0];
+    const log = JSON.parse(JSON.stringify(a.log || {})); for (const [k, devs] of Object.entries(b.log || {})) { const d = log[k] = log[k] || {}; for (const [dv, n] of Object.entries(devs)) d[dv] = Math.max(d[dv] || 0, n); }
+    const out = Object.assign({}, meta, { pos: pos.pos, progress: pos.progress, posAt: pos.posAt, lastRead: Math.max(a.lastRead || 0, b.lastRead || 0) });
+    if (iv.length) out.readIv = iv; if (Object.keys(log).length) out.log = log;
+    return out;
   },
   async run(interactive) {
     if (this.busy) return; this.busy = true; clearTimeout(this.timer);
@@ -3242,6 +3323,7 @@ function show(view) {
   if (view !== 'reader') { hidePop(); ttsStop(true); $('#notepop').hidden = true; }
 }
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
+$('#nav-log').addEventListener('click', () => showJournal());
 $('#nav-lib').addEventListener('click', () => { show('lib'); renderLibrary(); });
 $('#import-btn').addEventListener('click', () => $('#file-in').click());
 $('#file-in').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
