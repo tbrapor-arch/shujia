@@ -36,6 +36,7 @@
   --b1: #2C6A5A; --b2: #6FA595; --b3: #C9A24A; --b4: #B0412E; --track: #E3E7E0;
   --t1: #C8352B; --t2: #C27A00; --t3: #2E8650; --t4: #2C5FC4; --t5: #858B87;
   --f-ui: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-py: "Segoe UI", -apple-system, "Helvetica Neue", Roboto, Arial, "Hanken Grotesk", sans-serif;
   --f-serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
   --f-sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --f-kai: "LXGW WenKai TC", "Kaiti SC", "KaiTi", "Noto Serif SC", serif;
@@ -175,7 +176,7 @@ body.reading { background: var(--rbg); }
 .book.py-on ruby { margin-inline: calc(var(--pys) * .16em); }
 .book ruby { ruby-position: under; -webkit-ruby-position: after; ruby-align: center; }
 .book.py-over ruby { ruby-position: over; -webkit-ruby-position: before; }
-.book ruby rt { font-family: var(--f-ui); font-size: calc(var(--pys) * 1em); font-weight: 500; line-height: 1.1; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
+.book ruby rt { font-family: var(--f-py); font-size: calc(var(--pys) * 1em); font-weight: 500; line-height: 1.1; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
 .book.py-mono ruby rt { color: var(--rink); opacity: .78; }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 ::highlight(tts) { background-color: var(--accent-soft); color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: .25em; }
@@ -2531,8 +2532,14 @@ const VH = {
         const re = /[㐀-䶿一-鿿豈-﫿〇]+/g; let m;
         while ((m = re.exec(ns))) for (const [a, b] of segment(m[0])) if (b - a === 1 && single.has(m[0][a]) && !used[m.index + a]) hits.push([m.index + a, m.index + b, m[0][a]]);
       }
+      // one range per text node: in pinyin mode a range spanning two <ruby> would also cover the first one's pinyin
       for (const [a, b, w] of hits) {
-        try { const r = new Range(); r.setStart(map[a][0], map[a][1]); r.setEnd(map[b - 1][0], map[b - 1][1] + 1); const i = this.colorOf(w); this.hls[i].add(r); out.push([i, r]); } catch {}
+        const i = this.colorOf(w); let k = a;
+        while (k < b) {
+          const node = map[k][0]; let e = k + 1; while (e < b && map[e][0] === node) e++;
+          try { const r = new Range(); r.setStart(node, map[k][1]); r.setEnd(node, map[e - 1][1] + 1); this.hls[i].add(r); out.push([i, r]); } catch {}
+          k = e;
+        }
       }
     }
   }
