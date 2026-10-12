@@ -2792,20 +2792,31 @@ async function showPrep(i) {
     h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: () => { m.close(); goSection(entry.s); } }, 'Aller au début du chapitre'),
       h('button', { class: 'btn', title: 'Copie le chapitre et tes mots, puis ouvre Claude', onclick: () => chapterSummary(i, vlist) }, 'Résumé avec mes mots ↗'))));
 }
-function chapterSummary(i, vlist) {
-  const d = R.data, b = R.book, [a, z] = entryRange(i), label = chapterIn(d, d.toc[i].s).label;
+function rangeIn(d, i) { const a = d.toc[i].s; let b = d.sections.length; for (let j = i + 1; j < d.toc.length; j++) if (d.toc[j].s > a) { b = d.toc[j].s; break; } return [a, b]; }
+function summaryPrompt(d, b, i, vlist) {
+  const [a, z] = rangeIn(d, i), label = chapterIn(d, d.toc[i].s).label;
   let text = ''; for (let k = a; k < z; k++) for (const bl of leafBlocks(d.sections[k].el)) { const t = plainText(bl); if (t) text += t + '\n'; }
   const words = [...new Set(vlist.filter(v => v.section >= a && v.section < z).map(v => v.word))];
-  const ask = `Je lis 《${b.title}》${b.author ? '（' + b.author + '）' : ''} en chinois, niveau avancé. Voici le chapitre « ${label} ».
+  return { words, ask: `Je lis 《${b.title}》${b.author ? '（' + b.author + '）' : ''} en chinois, niveau avancé. Voici le chapitre « ${label} ».
 
 Écris en chinois un résumé de ce chapitre (300 à 500 字), dans une langue naturelle et littéraire.` + (words.length ? `
 Réutilise ceux de ces mots que j'ai relevés quand ils s'y prêtent naturellement, avec le sens qu'ils ont dans le chapitre : ${words.join('、')}.
 N'en force aucun : laisse de côté ceux qui ne trouvent pas leur place. Après le résumé, liste les mots utilisés.` : '') + `
 
-${text}`;
+${text}` };
+}
+function sendSummary({ ask, words }) {
   // copy first (needs the page focused), then open Claude
   const done = () => { toast(`Chapitre${words.length ? ` et ${words.length} mot${words.length > 1 ? 's' : ''}` : ''} copiés : colle dans Claude.`); window.open('https://claude.ai/new', '_blank', 'noopener'); };
   try { navigator.clipboard.writeText(ask).then(done, () => toast('Copie impossible dans ce navigateur.')); } catch { toast('Copie impossible dans ce navigateur.'); }
+}
+function chapterSummary(i, vlist) { sendSummary(summaryPrompt(R.data, R.book, i, vlist)); }
+// the book text for the vocabulary page (the open book, or parsed on demand and kept for the visit)
+async function bookDataFor(id) {
+  if (R.data && R.book && R.book.id === id) return R.data;
+  if (V.dataFor === id && V.data) return V.data;
+  const book = await DB.get('books', id), f = await DB.get('files', id); if (!book || !f) return null;
+  const d = await parseFor(book, f); V.dataFor = id; V.data = d; return d;
 }
 
 /* ================= read aloud (听) ================= */
@@ -3055,7 +3066,16 @@ async function renderVocab() {
     h('h1', null, `${list.length} mot${list.length > 1 ? 's' : ''}`),
     h('button', { class: 'btn primary', disabled: !list.length, onclick: () => startReview(due.length ? due : list) }, due.length ? `Réviser (${due.length} à revoir)` : 'Réviser tout'),
     h('button', { class: 'btn', disabled: !list.length, onclick: () => exportList(list, 'skritter') }, 'Copier pour Skritter'),
-    h('button', { class: 'btn', disabled: !list.length, onclick: () => exportList(list, 'anki') }, 'Copier pour Anki')));
+    h('button', { class: 'btn', disabled: !list.length, onclick: () => exportList(list, 'anki') }, 'Copier pour Anki'),
+    V.bookId && V.chapter && list.length ? (() => {
+      const btn = h('button', { class: 'btn', disabled: true, title: 'Copie le chapitre et ces mots, puis ouvre Claude' }, 'Résumé avec ces mots ↗');
+      const bk = bmap.get(V.bookId), idx = list[0].chapterIdx;
+      bookDataFor(V.bookId).then(d => {
+        if (!d || !d.toc[idx]) { btn.title = 'Texte du livre indisponible sur cet appareil'; return; }
+        const pr = summaryPrompt(d, bk, idx, all.filter(v => v.bookId === V.bookId)); btn.disabled = false; btn.onclick = () => sendSummary(pr);
+      }).catch(() => {});
+      return btn;
+    })() : null));
   if (!list.length) {
     root.append(h('div', { class: 'empty' }, all.length ? 'Aucun mot ne correspond à ces filtres.' : 'Pas encore de mots. En lisant, clique sur un mot puis sur « Ajouter » (ou appuie sur A).'));
     return;
