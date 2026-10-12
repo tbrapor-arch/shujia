@@ -2043,8 +2043,9 @@ function parseThemePage(text) {
   const lines = text.replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
   for (const l of lines) {
     let m;
+    if (l.startsWith('#')) continue; // comments (instructions in the Word template)
     if ((m = l.match(new RegExp(`^([IVXLC]+)\\s*[.．]\\s*[-–—]?\\s*([${HANP}]+)\\s*([${PY_CH}\\s]*?)\\s*[:：]\\s*(.+)$`)))) {
-      out.header = { num: m[1], zh: m[2], py: m[3].trim(), fr: m[4].trim() }; last = null; continue;
+      out.header = { num: m[1], zh: m[2], py: m[3].trim(), fr: m[4].trim() }; last = null; mode = 'words'; continue;
     }
     if (/成语|成語/.test(l) && /歇后语|歇後語/.test(l) && hanCount(l) < 20) { mode = 'expr'; last = null; continue; }
     if (/^\d{1,2}$/.test(l)) { if (mode === 'expr') continue; sec = secOf(l); if (pendingTitle) { sec.title = pendingTitle; pendingTitle = ''; } last = null; continue; }
@@ -2080,6 +2081,13 @@ function parseThemePage(text) {
   out.sections = out.sections.filter(x => x.entries.length || x.sentences.length);
   return out;
 }
+function splitThemeDoc(text) {
+  const HEAD = new RegExp(`^\\s*[IVXLC]+\\s*[.．]\\s*[-–—]?\\s*[${HANP}]+.*[:：]`);
+  const chunks = []; let cur = [];
+  for (const l of text.split('\n')) { if (HEAD.test(l) && cur.some(x => x.trim() && !x.trim().startsWith('#'))) { chunks.push(cur.join('\n')); cur = []; } cur.push(l); }
+  chunks.push(cur.join('\n'));
+  return chunks.map(parseThemePage).filter(p => p.header || p.sections.length || p.expr.length || p.bad.length);
+}
 function mergeThemePage(theme, pg) {
   if (pg.header) Object.assign(theme, { num: theme.num || pg.header.num, zh: theme.zh || pg.header.zh, py: theme.py || pg.header.py, fr: theme.fr || pg.header.fr });
   for (const x of pg.sections) {
@@ -2113,7 +2121,10 @@ async function showThemes(openId) {
     return;
   }
   for (const r of refs) {
-    root.append(h('h2', { style: 'font-family:var(--f-serif);margin:18px 0 10px;font-size:18px' }, r.title));
+    root.append(h('h2', { style: 'font-family:var(--f-serif);margin:18px 0 4px;font-size:18px' }, r.title));
+    if (r.src) root.append(h('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px' }, `Document lié : ${r.src.name} · ${new Date(r.src.at).toLocaleDateString('fr-FR')} · `,
+      h('button', { class: 'linkish', onclick: () => downloadThemeSrc(r) }, 'Télécharger'), ' · ',
+      h('button', { class: 'linkish', onclick: () => importThemePage() }, 'Remplacer')));
     root.append(h('div', { class: 'tlist' }, ...r.themes.map(t => {
       const nw = t.sections.reduce((a, x) => a + x.entries.length, 0), ns = t.sections.reduce((a, x) => a + x.sentences.length, 0);
       return h('button', { class: 'tcard', onclick: () => showThemes(t.id) }, h('span', { class: 'no' }, t.num || '·'), h('span', null, h('span', { class: 'zh' }, t.zh || '—'), ' ', h('span', { class: 'fr' }, (t.py ? t.py + ' · ' : '') + (t.fr || ''))), h('span'),
@@ -2148,6 +2159,12 @@ function renderTheme(root, ref, t) {
     root.append(box);
   }
 }
+async function downloadThemeSrc(r) {
+  let f = await DB.get('files', 'themesrc-' + r.id);
+  if (!f && Sync.enabled()) { try { toast('Téléchargement depuis Drive…'); const files = await Sync.list(); const x = files.find(y => y.name === Sync.srcName(r)); if (x) { f = { id: 'themesrc-' + r.id, blob: await (await Sync.download(x.id)).blob() }; await DB.put('files', f); } } catch {} }
+  if (!f) { toast('Document absent de cet appareil et de Drive.'); return; }
+  const a = h('a', { href: URL.createObjectURL(f.blob), download: r.src.name }); document.body.append(a); a.click(); a.remove();
+}
 async function importThemePage() {
   const st = await Themes.get(), refs = Object.values(st.refs);
   const ta = h('textarea', { id: 'th-in', placeholder: 'Colle ici le texte d\'une page (copié avec Google Lens ou Google Docs)…' });
@@ -2156,9 +2173,17 @@ async function importThemePage() {
   const lastSel = LS.get('thLast', ''); if (lastSel && [...themeSel.options].some(o => o.value === lastSel)) themeSel.value = lastSel;
   const refName = h('input', { type: 'text', id: 'th-ref', placeholder: 'Nom de l\'ouvrage (ex. Vocabulaire thématique)', value: refs[0] ? refs[0].title : '' });
   const pv = h('div', { class: 'pv' }, h('span', { class: 'muted' }, 'Aperçu après collage.'));
-  let parsed = null;
+  let parsed = null, pages = [], srcFile = null;
+  const linkChk = h('input', { type: 'checkbox', id: 'th-link', checked: true });
+  const linkRow = h('label', { class: 'field', style: 'display:flex;gap:8px;align-items:center;color:var(--ink)', hidden: true }, linkChk, 'Lier ce document à mon ouvrage (gardé dans mon Drive ; le réimporter remplace le contenu)');
+  const file = h('input', { type: 'file', accept: '.docx,.txt', hidden: true, onchange: async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { ta.value = /\.docx$/i.test(f.name) ? (await docxRead(f)).text : await f.text(); srcFile = f; linkRow.hidden = false; upd(); } catch (err) { toast('Fichier illisible : ' + err.message); }
+  } });
   const upd = () => {
-    parsed = parseThemePage(ta.value);
+    pages = splitThemeDoc(ta.value);
+    parsed = pages.length === 1 ? pages[0] : { header: pages.length > 1 ? { num: pages.map(p => p.header ? p.header.num : '…').join(', '), zh: `${pages.length} thèmes`, fr: '' } : null,
+      sections: pages.flatMap(p => p.sections), expr: pages.flatMap(p => p.expr), bad: pages.flatMap(p => p.bad) };
     const nw = parsed.sections.reduce((a, x) => a + x.entries.length, 0), ns = parsed.sections.reduce((a, x) => a + x.sentences.length, 0);
     pv.replaceChildren(
       h('div', { style: 'margin-bottom:6px' }, h('b', null, parsed.header ? `Thème ${parsed.header.num} · ${parsed.header.zh} · ${parsed.header.fr}` : 'Pas de titre de thème sur cette page'), ` — ${nw} mots, ${ns} phrases, ${parsed.expr.length} expressions`),
@@ -2172,22 +2197,40 @@ async function importThemePage() {
   const save = async () => {
     upd(); if (!parsed.sections.length && !parsed.expr.length) { toast('Rien de reconnu sur cette page.'); return; }
     const st2 = await Themes.get(); let ref, theme;
+    const link = srcFile && linkChk.checked;
+    if (link) { // the linked document is the source of truth: its reference book is rebuilt from it
+      const title = refName.value.trim() || (refs[0] && refs[0].title) || 'Mon ouvrage';
+      ref = Object.values(st2.refs).find(r => r.title === title) || Object.values(st2.refs)[0];
+      if (!ref) { const id = uid(); ref = st2.refs[id] = { id, title, createdAt: Date.now(), themes: [] }; }
+      ref.themes = []; ref.src = { name: srcFile.name, at: Date.now(), size: srcFile.size };
+      await DB.put('files', { id: 'themesrc-' + ref.id, blob: srcFile });
+      themeSel.value = '';
+    }
+    link0 = link ? ref : null;
+    for (const pg of pages) { if (!pg.sections.length && !pg.expr.length) continue; ({ ref, theme } = placePage(st2, pg)); mergeThemePage(theme, pg); ref.updatedAt = Date.now(); }
+    await Themes.put(st2); LS.set('thLast', ref.id + '|' + theme.id);
+    m.close(); toast(pages.length > 1 ? `${pages.length} thèmes importés.` : 'Page ajoutée.'); showThemes(pages.length > 1 ? undefined : theme.id);
+  };
+  // find (or create) the reference book and theme a page belongs to
+  let link0 = null;
+  const placePage = (st2, parsed) => {
+    let ref, theme;
+    if (link0) { ref = link0; theme = parsed.header && ref.themes.find(x => x.num === parsed.header.num || x.zh === parsed.header.zh); if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); } return { ref, theme }; }
     if (themeSel.value && !parsed.header) { const [rid, tid] = themeSel.value.split('|'); ref = st2.refs[rid]; theme = ref && ref.themes.find(x => x.id === tid); }
     if (!theme) {
       const title = refName.value.trim() || 'Mon ouvrage';
       ref = Object.values(st2.refs).find(r => r.title === title) || Object.values(st2.refs)[0];
       if (!ref) { const id = uid(); ref = st2.refs[id] = { id, title, createdAt: Date.now(), themes: [] }; }
       if (parsed.header) theme = ref.themes.find(x => x.num === parsed.header.num || x.zh === parsed.header.zh);
-      if (!theme && themeSel.value) { const [rid, tid] = themeSel.value.split('|'); const r2 = st2.refs[rid]; theme = r2 && r2.themes.find(x => x.id === tid); if (theme) ref = r2; }
+      if (!theme && themeSel.value && !parsed.header) { const [rid, tid] = themeSel.value.split('|'); const r2 = st2.refs[rid]; theme = r2 && r2.themes.find(x => x.id === tid); if (theme) ref = r2; }
       if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); }
     }
-    mergeThemePage(theme, parsed); ref.updatedAt = Date.now();
-    await Themes.put(st2); LS.set('thLast', ref.id + '|' + theme.id);
-    m.close(); toast('Page ajoutée.'); showThemes(theme.id);
+    return { ref, theme };
   };
   const m = modal('Importer une page', h('div', { class: 'pb timp' },
     h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Les entrées « 简(繁) pinyin …… sens », les phrases numérotées et les 成语 / 歇后语 sont reconnus. Une page sans titre de thème s\'ajoute au thème choisi.'),
-    refs.length ? null : h('label', { class: 'field' }, 'Ouvrage', refName), themeSel, ta, pv,
+    refs.length ? null : h('label', { class: 'field' }, 'Ouvrage', refName), themeSel, ta,
+    h('div', { class: 'confirm-row' }, h('button', { class: 'btn small', onclick: () => file.click() }, 'Ou choisir un fichier .docx / .txt'), file), linkRow, pv,
     h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: save }, 'Ajouter à ma base'))));
   setTimeout(() => ta.focus(), 50);
 }
@@ -3505,6 +3548,7 @@ const Sync = {
     const rec = { id: book.id, blob: new Blob([blob], { type: this.mime(book.format) }) };
     await DB.put('files', rec); StatsQ.add(book.id); return rec;
   },
+  srcName: r => `themesrc-${r.id}-${r.src.at}.${(r.src.name.match(/\.(\w+)$/) || [, 'txt'])[1].toLowerCase()}`,
   dirty() { if (!this.connected()) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(false), 20000); },
   strip(b) { const o = Object.assign({}, b); delete o.cover; delete o.stats; return o; },
   mergeBook(a, b) { // a = local, b = remote
@@ -3577,6 +3621,12 @@ const Sync = {
         const merged = { k: 'themes', refs, tomb: tt }, js = JSON.stringify({ refs, tomb: tt });
         if (JSON.stringify({ refs: lt.refs, tomb: lt.tomb || {} }) !== js) { await DB.put('kv', merged); if (!$('#thm').hidden) showThemes(); }
         if (!tf || JSON.stringify({ refs: rt.refs || {}, tomb: rt.tomb || {} }) !== js) await this.upload('shujia-themes.json', new Blob([js], { type: 'application/json' }), 'application/json', tf && tf.id);
+        for (const r of Object.values(refs)) if (r.src) {
+          const nm = this.srcName(r);
+          if (!byName.has(nm)) { const f = await DB.get('files', 'themesrc-' + r.id); if (f) await this.upload(nm, f.blob, f.blob.type || 'application/octet-stream'); }
+          for (const [n2, x] of byName) if (n2.startsWith(`themesrc-${r.id}-`) && n2 !== nm) await this.g(`${DRIVE}/${x.id}`, { method: 'DELETE' }).catch(() => {});
+        }
+        for (const id of Object.keys(tt)) for (const [n2, x] of byName) if (n2.startsWith(`themesrc-${id}-`)) await this.g(`${DRIVE}/${x.id}`, { method: 'DELETE' }).catch(() => {});
       }
       LS.set('lastSync', Date.now());
       this.setStatus('Synchronisé ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
