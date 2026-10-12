@@ -184,6 +184,8 @@ body.reading { background: var(--rbg); }
 .book.py-on ruby { margin-inline: calc(var(--pys) * .16em); }
 .book ruby { ruby-position: under; -webkit-ruby-position: after; ruby-align: center; }
 .book.py-over ruby { ruby-position: over; -webkit-ruby-position: before; }
+/* chengyu: thin dotted Claude-orange line between the characters and their pinyin (pinyin mode only) */
+.book.py-on .cy { background: linear-gradient(to right, rgb(217 119 87 / .8) 50%, transparent 0) 0 100% / 4px 1px repeat-x; }
 .book ruby rt { font-family: var(--f-py); font-size: calc(var(--pys) * 1em); font-weight: 500; line-height: 1.1; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
 .book.py-mono ruby rt { color: var(--rink); opacity: .78; }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
@@ -2547,14 +2549,15 @@ function annotate(sec) {
       const re = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3007]+/g; let m;
       while ((m = re.exec(d))) {
         const run = m[0], ns = normZh(run, isTrad);
-        for (const [a, b] of segment(ns)) plan.set(m.index + a, [b - a, pinyinForWord(run.slice(a, b), ns.slice(a, b))]);
+        for (const [a, b] of segment(ns)) { const nw = ns.slice(a, b); plan.set(m.index + a, [b - a, pinyinForWord(run.slice(a, b), nw), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); }
       }
     }
     while (i < d.length) {
       if (!HAN.test(d[i])) { buf += d[i++]; continue; }
       if (buf) { frag.append(buf); buf = ''; }
-      let len = 1, pys = null;
-      if (plan.has(i)) [len, pys] = plan.get(i);
+      let len = 1, pys = null, idiom = false;
+      if (plan.has(i)) [len, pys, idiom] = plan.get(i);
+      const out = idiom && pys ? h('span', { class: 'cy' }) : frag; if (out !== frag) frag.append(out);
       else for (let k = Math.min(Dict.maxLen, d.length - i); k >= 1; k--) {
         const w = d.slice(i, i + k), es = Dict.entries(w);
         if (es) { const p = pickPinyin(w, es); if (p) { len = k; pys = p; break; } }
@@ -2562,11 +2565,11 @@ function annotate(sec) {
       for (let k = 0; k < len; k++) {
         const ch = d[i + k];
         if (!pys) { frag.append(ch); continue; }
-        if (!pys[k]) { frag.append(ch); continue; }
+        if (!pys[k]) { out.append(ch); continue; }
         const y = syllable(pys[k]);
         const rb = document.createElement('ruby'); rb.dataset.py = '1'; rb.append(ch);
         const rt = document.createElement('rt'); rt.className = 't' + y.tone; rt.textContent = y.text.toLowerCase();
-        rb.append(rt); frag.append(rb);
+        rb.append(rt); out.append(rb);
       }
       i += len;
     }
@@ -2626,6 +2629,7 @@ const VH = {
 function unannotate(sec) {
   if (!sec.dataset.py && !sec.querySelector('[data-py]')) return;
   for (const el of $$('[data-py]:not(ruby)', sec)) delete el.dataset.py;
+  for (const cy of $$('span.cy', sec)) cy.replaceWith(...cy.childNodes);
   for (const rb of $$('ruby[data-py]', sec)) { $$('rt', rb).forEach(x => x.remove()); rb.replaceWith(rb.textContent); }
   sec.normalize(); delete sec.dataset.py;
   if (VH.done.has(sec)) VH.mark(sec);
