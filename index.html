@@ -185,7 +185,9 @@ body.reading { background: var(--rbg); }
 .book ruby { ruby-position: under; -webkit-ruby-position: after; ruby-align: center; }
 .book.py-over ruby { ruby-position: over; -webkit-ruby-position: before; }
 /* chengyu: thin dotted Claude-orange line between the characters and their pinyin (pinyin mode only) */
-.book.py-on .cy { background: linear-gradient(to right, rgb(217 119 87 / .8) 50%, transparent 0) 0 100% / 4px 1px repeat-x; }
+.book.py-on .cy { position: relative; }
+.book.py-on .cy::after { content: ""; position: absolute; left: .3em; right: .3em; bottom: calc(-1 * var(--pys) * 1.18em - 3px); border-bottom: 2px dotted rgb(217 119 87 / .8); pointer-events: none; }
+.book.py-on.py-over .cy::after { bottom: -3px; }
 .book ruby rt { font-family: var(--f-py); font-size: calc(var(--pys) * 1em); font-weight: 500; line-height: 1.1; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
 .book.py-mono ruby rt { color: var(--rink); opacity: .78; }
 .icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
