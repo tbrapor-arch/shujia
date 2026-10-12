@@ -218,6 +218,14 @@ body:has(#reader:not([hidden])) { background: var(--rbg); }
 .ex .exl a { color: var(--accent); font-weight: 600; }
 .vrow .ex { grid-column: 2 / -1; padding: 4px 0 6px; }
 @media (max-width: 560px) { .vrow .ex { grid-column: 1 / -1; } }
+::highlight(vw0) { background-color: hsl(350 85% 72% / .38); color: inherit; }
+::highlight(vw1) { background-color: hsl(22 85% 72% / .38); color: inherit; }
+::highlight(vw2) { background-color: hsl(48 85% 72% / .38); color: inherit; }
+::highlight(vw3) { background-color: hsl(90 85% 72% / .38); color: inherit; }
+::highlight(vw4) { background-color: hsl(150 85% 72% / .38); color: inherit; }
+::highlight(vw5) { background-color: hsl(188 85% 72% / .38); color: inherit; }
+::highlight(vw6) { background-color: hsl(222 85% 72% / .38); color: inherit; }
+::highlight(vw7) { background-color: hsl(275 85% 72% / .38); color: inherit; }
 ::highlight(zh) { background-color: var(--hl); color: inherit; }
 
 /* drawers */
@@ -680,7 +688,7 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
   .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
-const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
 if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
 function applySettings() {
   const r = $('#reader');
@@ -1880,8 +1888,10 @@ async function openBook(id) {
   restorePos();
   addPrepButtons();
   if (settings.pinyin) startPinyin();
+  if (settings.vocabHl) VH.start();
 }
 function closeReader(silent) {
+  VH.stop();
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
   if (R.book) savePos(true);
   endPeek(); R.pending = null; ttsStop(true);
@@ -1989,6 +1999,9 @@ function showSettings() {
         pySizeCtl(),
         seg('pyPos', [['under', 'En dessous'], ['over', 'Au-dessus']]),
         seg('pyColor', [['mono', 'Neutre'], ['tones', 'Couleurs des tons']])),
+      h('div', { class: 'set-group' }, h('h3', null, 'Surligner mes mots de ce livre'),
+        seg('vocabHl', [[false, 'Non'], [true, 'Oui']], v => { settings.vocabHl = v; applySettings(); v ? VH.start() : VH.stop(); }),
+        h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Chaque mot de ta liste pour ce livre garde sa couleur pastel, partout où il revient.')),
       h('div', { class: 'set-group' }, h('h3', null, 'Fond'), seg('paper', [['auto', 'Automatique'], ['sepia', 'Sépia'], ['night', 'Nuit']])),
       isTouch() ? null : h('div', { class: 'set-group' }, h('h3', null, 'Dictionnaire'), seg('mode', [['hover', 'Au survol'], ['click', 'Au clic']]),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Au survol : la définition suit la souris. Clique sur un mot pour figer le pop-up, puis appuie sur A pour l\'ajouter.'))));
@@ -2161,7 +2174,7 @@ async function toggleSave() {
   }
   updateVocabCount(); renderPop();
 }
-async function updateVocabCount() { if (R.book) $('#r-vn').textContent = (await DB.byBook(R.book.id)).length; }
+async function updateVocabCount() { if (R.book) $('#r-vn').textContent = (await DB.byBook(R.book.id)).length; VH.refresh(); }
 function shiftHit(dir) {
   if (!P.hit) return;
   let start;
@@ -2360,11 +2373,53 @@ function annotate(sec) {
     if (buf) frag.append(buf);
     node.replaceWith(frag);
   }
+  if (VH.done.has(sec)) VH.mark(sec);
 }
+/* ================= highlight the words saved for this book ================= */
+const VH = {
+  on: false, obs: null, done: new Map(), hls: null,
+  start() {
+    if (!R.data || !settings.vocabHl || !window.Highlight || !CSS.highlights) return;
+    if (!this.hls) { this.hls = Array.from({ length: 8 }, () => { const x = new Highlight(); x.priority = -1; return x; }); this.hls.forEach((x, i) => CSS.highlights.set('vw' + i, x)); }
+    this.on = true; Words.load().catch(() => {}).then(() => this.refresh());
+    this.obs && this.obs.disconnect();
+    this.obs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !this.done.has(e.target)) this.mark(e.target); }, { rootMargin: '1500px 0px' });
+    R.data.sections.forEach(s => this.obs.observe(s.el));
+  },
+  stop() {
+    this.on = false; this.obs && this.obs.disconnect(); this.obs = null; this.done.clear();
+    if (this.hls) this.hls.forEach(x => x.clear());
+  },
+  refresh() { if (!this.on) return; ensureFreq(); for (const sec of [...this.done.keys()]) this.mark(sec); },
+  colorOf(w) { let x = 0; for (const c of w) x = (x * 31 + c.codePointAt(0)) >>> 0; return x % 8; },
+  mark(sec) {
+    const old = this.done.get(sec); if (old) for (const [i, r] of old) this.hls[i].delete(r);
+    if (!this.on) { this.done.delete(sec); return; }
+    const out = []; this.done.set(sec, out);
+    const saved = R.saved; if (!saved || !saved.size) return;
+    ensureFreq();
+    const isTrad = bookIsTrad(), multi = [...saved].filter(w => w.length > 1).sort((a, b) => b.length - a.length), single = new Set([...saved].filter(w => w.length === 1));
+    for (const bl of leafBlocks(sec)) {
+      const tw = textWalker(bl), map = []; let full = '', n;
+      while ((n = tw.nextNode())) { for (let i = 0; i < n.data.length; i++) map.push([n, i]); full += n.data; }
+      if (!full || !HAN.test(full)) continue;
+      const ns = normZh(full, isTrad), used = new Uint8Array(ns.length), hits = [];
+      for (const w of multi) { let i = ns.indexOf(w); while (i >= 0) { let free = true; for (let k = i; k < i + w.length; k++) if (used[k]) { free = false; break; } if (free) { used.fill(1, i, i + w.length); hits.push([i, i + w.length, w]); } i = ns.indexOf(w, i + w.length); } }
+      if (single.size && Words.ready) {
+        const re = /[㐀-䶿一-鿿豈-﫿〇]+/g; let m;
+        while ((m = re.exec(ns))) for (const [a, b] of segment(m[0])) if (b - a === 1 && single.has(m[0][a]) && !used[m.index + a]) hits.push([m.index + a, m.index + b, m[0][a]]);
+      }
+      for (const [a, b, w] of hits) {
+        try { const r = new Range(); r.setStart(map[a][0], map[a][1]); r.setEnd(map[b - 1][0], map[b - 1][1] + 1); const i = this.colorOf(w); this.hls[i].add(r); out.push([i, r]); } catch {}
+      }
+    }
+  }
+};
 function unannotate(sec) {
   if (!sec.dataset.py) return;
   for (const rb of $$('ruby[data-py]', sec)) { $$('rt', rb).forEach(x => x.remove()); rb.replaceWith(rb.textContent); }
   sec.normalize(); delete sec.dataset.py;
+  if (VH.done.has(sec)) VH.mark(sec);
 }
 let pyObs = null;
 function keepPlace(fn) {
