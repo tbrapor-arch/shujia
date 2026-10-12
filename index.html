@@ -2058,6 +2058,25 @@ function sentenceFor(hit, len) {
   if (s.length > 140) { const i = abs - a; s = (i > 60 ? '…' : '') + s.slice(Math.max(0, i - 60), i + len + 60) + (i + len + 60 < s.length ? '…' : ''); }
   return s;
 }
+// whole sentence around a text position, as a DOM range (same boundaries as sentenceFor)
+function sentenceRange(node, off) {
+  const block = node.parentElement.closest(BLOCK_SEL) || $('#book');
+  const tw = textWalker(block); const map = []; let full = '', abs = -1, n;
+  while ((n = tw.nextNode())) { if (n === node) abs = full.length + Math.min(off, n.data.length - 1); for (let i = 0; i < n.data.length; i++) map.push([n, i]); full += n.data; }
+  if (abs < 0 || !full) return null;
+  const END = '。！？!?；;…\n', CLOSE = '”」』’）)》';
+  let a = abs; while (a > 0 && !END.includes(full[a - 1])) a--;
+  while (a < abs && (CLOSE.includes(full[a]) || /\s/.test(full[a]))) a++;
+  let b = abs + 1; while (b < full.length && !END.includes(full[b])) b++;
+  while (b < full.length && (END.includes(full[b]) || CLOSE.includes(full[b]))) b++;
+  while (b > a + 1 && /\s/.test(full[b - 1])) b--;
+  const r = document.createRange(); r.setStart(map[a][0], map[a][1]); r.setEnd(map[b - 1][0], map[b - 1][1] + 1); return r;
+}
+let selExpanded = false;
+function selectSentence(node, off) {
+  const r = sentenceRange(node, off); if (!r) return;
+  selExpanded = true; const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
 function showHit(hit, x, y, pinned) {
   if (!Dict.ready) { ensureDict(); if (pinned) toast('Le dictionnaire se charge, réessaie dans un instant.'); return; }
   ensureFreq();
@@ -2108,6 +2127,7 @@ function renderPop() {
     ${ents}${alts}${chars}
     <div class="pf"><button class="btn small" data-act="prev" title="Commencer un caractère plus tôt">‹</button><button class="btn small" data-act="next" title="Commencer un caractère plus loin">›</button>
     <button class="btn small" data-act="ex" aria-expanded="${!!P.showEx}">Exemples</button>
+    <button class="btn small" data-act="sent" title="Sélectionner toute la phrase">Phrase</button>
     <button class="btn small" data-act="ai" title="Ouvre Claude avec cette phrase (question copiée aussi)">Claude ↗</button>
     <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>E</kbd> exemples · <kbd>C</kbd> Claude</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>E</kbd> · <kbd>C</kbd></span>')}</div>
     <div class="sec ex" id="pop-ex" ${P.showEx ? '' : 'hidden'}></div>`;
@@ -2158,6 +2178,7 @@ $('#pop').addEventListener('click', e => {
   if (act === 'add') toggleSave(); else if (act === 'close') hidePop(); else if (act === 'prev') { P.pinned = true; shiftHit(-1); } else if (act === 'next') { P.pinned = true; shiftHit(1); }
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (act === 'ai') askClaude();
+  else if (act === 'sent') { const st = P.hit.start; hidePop(); selectSentence(st.node, st.off); }
 });
 function openClaude(q) {
   window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
@@ -2174,7 +2195,7 @@ function askClaudeSel(text) {
   openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi ce passage en français : sens, tournures ou expressions difficiles, registre, et ce qu'il sous-entend. Sois concis.\n\n${t}${bookSrc()}`);
 }
 const askSel = h('button', { id: 'ask-sel', class: 'btn small primary', hidden: true, onmousedown: e => e.preventDefault(), onclick: e => {
-  e.stopPropagation(); const t = String(getSelection()); askSel.hidden = true; if (t.trim()) askClaudeSel(t);
+  e.stopPropagation(); const sel = getSelection(); let t = String(sel); if (sel.rangeCount) { const f = sel.getRangeAt(0).cloneContents(); f.querySelectorAll('rt,rp').forEach(x => x.remove()); t = f.textContent; } askSel.hidden = true; if (t.trim()) askClaudeSel(t);
 } }, 'Demander à Claude ↗');
 document.body.append(askSel);
 function selInBook() {
@@ -2187,6 +2208,12 @@ function selInBook() {
 let selT = 0;
 document.addEventListener('selectionchange', () => {
   clearTimeout(selT);
+  const now = getSelection();
+  if (!now || now.isCollapsed) selExpanded = false;
+  else if (isTouch() && !selExpanded && now.rangeCount && String(now).replace(/\s/g, '').length <= 4) {
+    const r0 = now.getRangeAt(0);
+    if ($('#book').contains(r0.startContainer) && r0.startContainer.nodeType === 3) { selectSentence(r0.startContainer, r0.startOffset); return; }
+  }
   selT = setTimeout(() => {
     const r = selInBook(); if (!r) { askSel.hidden = true; return; }
     if (P.hit) hidePop();
