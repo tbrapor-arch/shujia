@@ -758,7 +758,7 @@ function applySettings() {
   const b = $('#book'); b.classList.toggle('py-over', settings.pyPos === 'over'); b.classList.toggle('py-mono', settings.pyColor === 'mono'); document.documentElement.classList.toggle('pymono', settings.pyColor === 'mono');
   $('#r-py').setAttribute('aria-pressed', String(!!settings.pinyin));
   LS.set('settings', settings);
-  if (R.data && $('#book').classList.contains('cv')) cvRefresh();
+  if (R.data && $('#book').classList.contains('cv')) cvEstimate();
 }
 
 /* ================= import ================= */
@@ -1964,7 +1964,9 @@ function closeReader(silent) {
 function restorePos() {
   const p = R.book && R.book.pos; const secs = R.data.sections;
   if (!p || !secs[p.s]) { window.scrollTo(0, 0); onScroll(); return; }
-  const go = () => { const el = secs[p.s].el; const top = el.getBoundingClientRect().top + scrollY; window.scrollTo(0, top + p.r * el.offsetHeight - barH()); };
+  const at = p.c != null ? Goal.blockAt(p.c) : null;
+  const go = at ? () => { const r = at.el.getBoundingClientRect(); window.scrollTo(0, r.top + scrollY + at.f * r.height - barH() - 2); }
+    : () => { const el = secs[p.s].el; const top = el.getBoundingClientRect().top + scrollY; window.scrollTo(0, top + p.r * el.offsetHeight - barH()); };
   go(); requestAnimationFrame(() => { go(); onScroll(); });
 }
 const barH = () => $('.rbar').offsetHeight + 12;
@@ -2261,20 +2263,19 @@ function onScroll() {
     const si = currentSection(); R.cur = si;
     const el = R.data.sections[si].el; const rect = el.getBoundingClientRect();
     const r = Math.min(1, Math.max(0, (barH() - rect.top) / Math.max(1, el.offsetHeight)));
-    const prog = (R.data.before[si] + r * R.data.sections[si].len) / R.data.total;
-    const pos = R.data.before[si] + r * R.data.sections[si].len;
-    const g = Goal.status(pos), chap = chapterOf(si).label;
-    Track.step(Goal.posOnScreen(pos));
+    const c = Goal.posOnScreen(R.data.before[si] + r * R.data.sections[si].len), prog = Math.min(1, c / R.data.total);
+    const g = Goal.status(c), chap = chapterOf(si).label;
+    Track.step(c);
     if (g) $('#r-chap').replaceChildren(h('span', { class: 'goal' }, g), ' · ' + chap); else $('#r-chap').textContent = chap;
     $('#r-prog').style.width = (prog * 100).toFixed(1) + '%';
     const pe = $('#r-pct'); pe.hidden = false; pe.textContent = Math.floor(prog * 100) + ' %';
-    R.pending = { s: si, r, prog };
+    R.pending = { s: si, r, prog, c: Math.round(c * 10) / 10 };
     clearTimeout(R.saveTimer); R.saveTimer = setTimeout(() => savePos(), 700);
   });
 }
 function savePos() {
   if (!R.book || !R.pending || R.peek) return;
-  R.book.pos = { s: R.pending.s, r: R.pending.r }; R.book.progress = R.pending.prog; R.book.lastRead = Date.now(); R.book.posAt = Date.now();
+  R.book.pos = { s: R.pending.s, r: R.pending.r, c: R.pending.c }; R.book.progress = R.pending.prog; R.book.lastRead = Date.now(); R.book.posAt = Date.now();
   DB.put('books', R.book, { touch: false }).catch(() => {}); window.Sync && Sync.dirty();
 }
 /* ================= reading goal: the text split into N equal portions ================= */
@@ -2312,6 +2313,12 @@ const Goal = {
     bounds.push(last && Math.abs(last.off - b) < 2 ? last : { off: b });
     this.key = key; this.bounds = bounds; this.curK = -1; return bounds;
   },
+  blockAt(c) { // paragraph containing character offset c, and how far into it
+    const L = this.paraEnds(); let lo = 0, hi = L.length - 1, k = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (L[m].off > c) { k = m; hi = m - 1; } else lo = m + 1; }
+    if (k < 0) k = L.length - 1; if (k < 0) return null;
+    const ab = L.byEl.get(L[k].el); return { el: L[k].el, f: Math.max(0, Math.min(1, (c - ab[0]) / Math.max(1, ab[1] - ab[0]))) };
+  },
   posOnScreen(fallback) {
     const y = barH() + 2, book = $('#book'), hit = document.elementsFromPoint(innerWidth / 2, y).find(e => book.contains(e) && e !== book);
     const bl = hit && (hit.closest('.cvb') || hit.closest(BLOCK_SEL)); const ab = bl && this.paraEnds().byEl.get(bl);
@@ -2320,7 +2327,6 @@ const Goal = {
   },
   status(pos) {
     const bs = this.compute(); if (!bs) { this.mark(-1); return ''; }
-    pos = this.posOnScreen(pos);
     const n = bs.length - 1;
     if (pos < bs[0].off - 1) { this.mark(1); return 'Objectif : pas encore commencé'; }
     let k = 1; while (k < n && pos >= bs[k].off) k++;
@@ -2911,6 +2917,17 @@ function unannotate(sec) {
   if (VH.done.has(sec)) VH.mark(sec);
 }
 let pyObs = null;
+function cvEstimate() {
+  const b = $('#book'); if (!R.data || !b.classList.contains('cv')) return cvRefresh();
+  const L = Goal.paraEnds(); let act = 0, raw = 0;
+  const w = Math.max(100, b.clientWidth), fs = parseFloat(getComputedStyle(b).fontSize) || 20;
+  const rawOf = e => { const ab = L.byEl.get(e); const n = ab ? ab[1] - ab[0] : 0; return Math.ceil(Math.max(1, n) * fs / w); };
+  const els = [...b.querySelectorAll('.cvb')], near = els.map(e => { const r = e.getBoundingClientRect(); return r.bottom > -innerHeight && r.top < innerHeight * 2 ? r.height : -1; }); // all reads first
+  els.forEach((e, i) => { if (near[i] > 0) { act += near[i]; raw += rawOf(e); } });
+  if (!raw) return;
+  const k = act / raw; // pixels per estimated line, calibrated on what is rendered now
+  els.forEach((e, i) => { if (near[i] < 0) e.style.containIntrinsicBlockSize = `auto ${Math.round(rawOf(e) * k)}px`; }); // then writes only
+}
 function cvRefresh() {
   if (!R.data) return;
   const b = $('#book'); b.classList.remove('cv');
@@ -2921,7 +2938,7 @@ function cvRefresh() {
 }
 const s0 = e => e.tagName === 'SECTION' ? e : null;
 let cvT = 0;
-addEventListener('resize', () => { clearTimeout(cvT); cvT = setTimeout(() => { if (R.data && !$('#reader').hidden) keepPlace(cvRefresh); }, 250); });
+addEventListener('resize', () => { clearTimeout(cvT); cvT = setTimeout(() => { if (R.data && !$('#reader').hidden) keepPlace(cvEstimate); }, 250); });
 function keepPlace(fn) {
   if (!R.data || $('#reader').hidden) return fn();
   // anchor on the paragraph at the top of the screen (exact), else on the section (proportional)
@@ -2949,7 +2966,7 @@ function startPinyin() {
     const si = currentSection();
     for (let k = Math.max(0, si - 1); k <= Math.min(R.data.sections.length - 1, si + 1); k++)
       for (const bl of leafBlocks(R.data.sections[k].el)) { const r = bl.getBoundingClientRect(); if (r.bottom > -innerHeight && r.top < innerHeight * 2) annotate(bl); }
-    cvRefresh();
+    cvEstimate();
   });
   // visible paragraphs are annotated at once; the ones a few screens away are queued and done while the reader is idle
   const queue = new Set(); let busy = false;
@@ -2968,7 +2985,7 @@ function startPinyin() {
 function stopPinyin() {
   pyObs && pyObs.disconnect(); pyObs = null;
   if (!R.data) return;
-  keepPlace(() => { $('#book').classList.remove('py-on'); R.data.sections.forEach(s => unannotate(s.el)); cvRefresh(); });
+  keepPlace(() => { $('#book').classList.remove('py-on'); R.data.sections.forEach(s => unannotate(s.el)); cvEstimate(); });
 }
 function setPinyin(on) {
   settings.pinyin = !!on; applySettings(); hidePop();
