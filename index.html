@@ -72,7 +72,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .btn.small { padding: 4px 9px; font-size: 13px; }
 .icon-btn { border: 0; background: transparent; width: 38px; height: 38px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 16px; }
 .icon-btn:hover { background: var(--accent-soft); }
-input[type=text], input[type=url], input[type=date], input[type=search], select, textarea {
+input[type=text], input[type=url], input[type=date], input[type=search], input[type=number], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; min-width: 0; }
 textarea { min-height: 90px; resize: vertical; }
 label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -128,14 +128,23 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 #reader { --pys: .55; --rs: 20px; --rlh: 1.9; --rfont: var(--f-serif); background: var(--rbg); color: var(--rink); margin-inline: -16px; padding-inline: 16px; min-height: 100vh; }
 #reader[data-paper="sepia"] { --rbg: #F1E7D2; --rink: #3A2F22; --line: #DCCDAF; --surface: #FAF4E6; --muted: #7A6A55; --accent-soft: #E7DABE; color-scheme: light; }
 #reader[data-paper="night"] { --rbg: #101311; --rink: #C9CEC8; --line: #262C28; --surface: #181D1A; --muted: #8B938D; --accent-soft: #1E2C27; color-scheme: dark; }
-body:has(#reader:not([hidden])) { background: var(--rbg); }
+body.reading { background: var(--rbg); }
+/* paragraphs off screen are neither laid out nor painted; their height is measured beforehand so scrolling and positions stay exact */
+.book.cv .cvb { content-visibility: auto; }
 #reader[data-paper="sepia"], #reader[data-paper="night"] { }
-.rbar { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding: env(safe-area-inset-top, 0px) 8px 0; background: color-mix(in srgb, var(--rbg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.rbar { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding: env(safe-area-inset-top, 0px) 8px 0; background: var(--rbg); border-bottom: 1px solid var(--line); }
 .rbar-in { height: var(--bar-h); display: flex; align-items: center; gap: 4px; max-width: 1080px; margin: 0 auto; }
 .rbar .where { flex: 1; min-width: 0; display: grid; line-height: 1.25; padding-inline: 6px; }
 .rbar .where b { font-family: var(--f-serif); font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rbar .where span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rbar .lbl { font-size: 13px; font-weight: 600; }
+.rbar .where span .goal { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+.book .goal-end::after { content: attr(data-goal); display: block; margin: .9em 0 .2em; padding-top: .35em; border-top: 1.5px dashed var(--accent); color: var(--accent); font-family: var(--f-ui); font-size: 12px; text-indent: 0; text-align: center; letter-spacing: .04em; }
+#r-pct { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font: 500 11px var(--f-ui); color: var(--muted); opacity: .7; pointer-events: none; z-index: 30; font-variant-numeric: tabular-nums; }
+#r-pct[hidden] { display: none; }
+.goal-form { display: grid; gap: 12px; }
+.goal-form .row2 { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.goal-form .row2 > label { flex: 1; min-width: 160px; }
 .rprog { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--accent); width: 0; transition: width .2s; }
 .peek { position: fixed; left: 0; right: 0; top: calc(var(--bar-h) + env(safe-area-inset-top, 0px) + 1px); z-index: 39; display: flex; justify-content: center; padding: 8px 12px; pointer-events: none; }
 .peek-in { pointer-events: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 12px; padding: 8px 10px 8px 14px; font-size: 13.5px; max-width: 100%; }
@@ -441,7 +450,7 @@ body:has(#reader:not([hidden])) { background: var(--rbg); }
     <button class="icon-btn" id="r-tts" aria-pressed="false" title="Lecture audio" aria-label="Lecture audio"><span class="zh" style="font-size:15px">听</span></button>
     <button class="icon-btn" id="r-py" aria-pressed="false" title="Afficher le pinyin (P)" aria-label="Afficher le pinyin"><span style="font-size:13px;font-weight:600">pīn</span></button>
     <button class="icon-btn" id="r-set" title="Affichage" aria-label="Réglages d'affichage"><span class="zh" style="font-size:15px">字</span></button>
-  </div><div class="rprog" id="r-prog"></div></div>
+  </div><div class="rprog" id="r-prog"></div></div><div id="r-pct" hidden></div>
   <div class="peek" id="peek" hidden><div class="peek-in">
     <span>Aperçu d'un passage. Ta position de lecture n'a pas changé.</span>
     <button class="btn small primary" id="peek-back">Revenir à ma lecture</button>
@@ -700,6 +709,7 @@ function applySettings() {
   const b = $('#book'); b.classList.toggle('py-over', settings.pyPos === 'over'); b.classList.toggle('py-mono', settings.pyColor === 'mono'); document.documentElement.classList.toggle('pymono', settings.pyColor === 'mono');
   $('#r-py').setAttribute('aria-pressed', String(!!settings.pinyin));
   LS.set('settings', settings);
+  if (R.data && $('#book').classList.contains('cv')) cvRefresh();
 }
 
 /* ================= import ================= */
@@ -1878,20 +1888,22 @@ async function openBook(id) {
   try { data = await parseFor(book, file); }
   catch (e) { console.error(e); if (my === openSeq) bookEl.replaceChildren(h('div', { class: 'loading' }, `Lecture impossible : ${e.message}`)); return; }
   if (my !== openSeq) { data.urls.forEach(u => URL.revokeObjectURL(u)); return; } // another book was opened meanwhile
-  R.data = data; R.book = book;
+  Goal.reset(); R.data = data; R.book = book;
   if (book.status === 'toread') { book.status = 'reading'; if (!book.startDate) book.startDate = today(); }
   book.lastRead = Date.now(); DB.put('books', book);
   const vocab = await DB.byBook(id); R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
   bookEl.replaceChildren(...R.data.sections.map(s => s.el), h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
   ensureDict();
   try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
-  restorePos();
   addPrepButtons();
+  cvRefresh();
+  restorePos();
   if (settings.pinyin) startPinyin();
   if (settings.vocabHl) VH.start();
 }
 function closeReader(silent) {
-  VH.stop();
+  $('#book').classList.remove('cv');
+  VH.stop(); Goal.reset(); $('#r-pct').hidden = true;
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
   if (R.book) savePos(true);
   endPeek(); R.pending = null; ttsStop(true);
@@ -1930,8 +1942,11 @@ function onScroll() {
     const el = R.data.sections[si].el; const rect = el.getBoundingClientRect();
     const r = Math.min(1, Math.max(0, (barH() - rect.top) / Math.max(1, el.offsetHeight)));
     const prog = (R.data.before[si] + r * R.data.sections[si].len) / R.data.total;
-    $('#r-chap').textContent = chapterOf(si).label;
+    const pos = R.data.before[si] + r * R.data.sections[si].len;
+    const g = Goal.status(pos), chap = chapterOf(si).label;
+    if (g) $('#r-chap').replaceChildren(h('span', { class: 'goal' }, g), ' · ' + chap); else $('#r-chap').textContent = chap;
     $('#r-prog').style.width = (prog * 100).toFixed(1) + '%';
+    const pe = $('#r-pct'); pe.hidden = false; pe.textContent = Math.floor(prog * 100) + ' %';
     R.pending = { s: si, r, prog };
     clearTimeout(R.saveTimer); R.saveTimer = setTimeout(() => savePos(), 700);
   });
@@ -1940,6 +1955,111 @@ function savePos() {
   if (!R.book || !R.pending || R.peek) return;
   R.book.pos = { s: R.pending.s, r: R.pending.r }; R.book.progress = R.pending.prog; R.book.lastRead = Date.now(); R.book.posAt = Date.now();
   DB.put('books', R.book, { touch: false }).catch(() => {}); window.Sync && Sync.dirty();
+}
+/* ================= reading goal: the text split into N equal portions ================= */
+const blockLen = el => { let n = textLen(el); for (const rt of el.querySelectorAll('rt,rp')) n -= textLen(rt); return n; };
+const Goal = {
+  key: '', bounds: null, marked: null, curK: -1,
+  // global character offsets where paragraphs end (cached per opened book)
+  paraEnds() {
+    if (R.data.paraEnds) return R.data.paraEnds;
+    const out = []; out.byEl = new Map();
+    R.data.sections.forEach((sec, si) => {
+      const base = R.data.before[si], len = sec.len; let acc = 0;
+      for (const bl of leafBlocks(sec.el)) { const n = blockLen(bl); if (!n) continue; const a = base + acc; acc = Math.min(len, acc + n); out.push({ off: base + acc, el: bl }); out.byEl.set(bl, [a, base + acc]); }
+    });
+    return (R.data.paraEnds = out);
+  },
+  range(g) {
+    const total = R.data.total, a = Math.max(0, Math.min(total, g.start || 0)), b = g.end == null ? total : Math.max(a + 1, Math.min(total, g.end));
+    return [a, b];
+  },
+  compute() {
+    const g = R.book && R.book.goal; if (!g || !g.on || !R.data) { this.bounds = null; return null; }
+    const key = `${R.book.id}|${g.days}|${g.start}|${g.end}`; if (key === this.key && this.bounds) return this.bounds;
+    const ends = this.paraEnds(), [a, b] = this.range(g), n = Math.max(1, Math.min(365, g.days | 0)), bounds = [{ off: a }];
+    let j = 0;
+    for (let k = 1; k < n; k++) {
+      const t = a + (b - a) * k / n;
+      while (j + 1 < ends.length && ends[j + 1].off <= t) j++;
+      let best = ends[j]; const nx = ends[j + 1];
+      if (nx && (!best || Math.abs(nx.off - t) < Math.abs(best.off - t))) best = nx;
+      const prev = bounds[bounds.length - 1].off;
+      bounds.push(best && best.off > prev && best.off < b ? best : { off: Math.max(prev, t) });
+    }
+    const last = ends.filter(e => e.off <= b).pop();
+    bounds.push(last && Math.abs(last.off - b) < 2 ? last : { off: b });
+    this.key = key; this.bounds = bounds; this.curK = -1; return bounds;
+  },
+  posOnScreen(fallback) {
+    const y = barH() + 2, book = $('#book'), hit = document.elementsFromPoint(innerWidth / 2, y).find(e => book.contains(e) && e !== book);
+    const bl = hit && (hit.closest('.cvb') || hit.closest(BLOCK_SEL)); const ab = bl && this.paraEnds().byEl.get(bl);
+    if (!ab) return fallback;
+    const r = bl.getBoundingClientRect(); return ab[0] + Math.max(0, Math.min(1, (y - r.top) / Math.max(1, r.height))) * (ab[1] - ab[0]);
+  },
+  status(pos) {
+    const bs = this.compute(); if (!bs) { this.mark(-1); return ''; }
+    pos = this.posOnScreen(pos);
+    const n = bs.length - 1;
+    if (pos < bs[0].off - 1) { this.mark(1); return 'Objectif : pas encore commencé'; }
+    let k = 1; while (k < n && pos >= bs[k].off) k++;
+    if (pos >= bs[n].off) { this.mark(-1); return 'Objectif terminé'; }
+    this.mark(k);
+    const pct = Math.max(0, Math.min(100, (pos - bs[k - 1].off) / Math.max(1, bs[k].off - bs[k - 1].off) * 100));
+    return `${k}/${n} · ${pct.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+  },
+  // dashed line at the end of the current portion only
+  mark(k) {
+    if (k === this.curK) return; this.curK = k;
+    if (this.marked) { this.marked.classList.remove('goal-end'); delete this.marked.dataset.goal; this.marked = null; }
+    const b = k > 0 && this.bounds && this.bounds[k]; if (!b || !b.el) return;
+    b.el.classList.add('goal-end'); b.el.dataset.goal = `fin de la portion ${k}/${this.bounds.length - 1}`; this.marked = b.el;
+  },
+  reset() { this.key = ''; this.bounds = null; this.mark(-1); this.curK = -1; }
+};
+function showGoal() {
+  const b = R.book, d = R.data; if (!b || !d) return;
+  const g = Object.assign({ on: true, days: 30, start: null, end: null, startLabel: '', endLabel: '' }, b.goal || {});
+  const pos = R.pending ? d.before[R.pending.s] + R.pending.r * d.sections[R.pending.s].len : 0;
+  const toc = d.toc;
+  const startSel = h('select', { id: 'g-start' }, h('option', { value: '' }, 'Début du livre'), ...toc.map((t, i) => h('option', { value: 't' + i }, '　'.repeat(Math.min(t.level, 2)) + t.title)));
+  const endSel = h('select', { id: 'g-end' }, h('option', { value: '' }, 'Fin du livre'), ...toc.map((t, i) => h('option', { value: 't' + i }, '　'.repeat(Math.min(t.level, 2)) + 'fin de ' + t.title)));
+  let hereOff = null;
+  const hereOpt = h('option', { value: 'here' }, '');
+  const syncSel = () => {
+    if (g.start != null) { const i = toc.findIndex(t => d.before[t.s] === g.start); if (i >= 0) startSel.value = 't' + i; else { hereOff = g.start; hereOpt.textContent = g.startLabel || 'Position choisie'; startSel.append(hereOpt); startSel.value = 'here'; } }
+    if (g.end != null) { const i = toc.findIndex((t, k) => entryRange(k)[1] < d.sections.length ? d.before[entryRange(k)[1]] === g.end : d.total === g.end); endSel.value = i >= 0 ? 't' + i : ''; }
+  };
+  syncSel();
+  const days = h('input', { type: 'number', id: 'g-days', min: 1, max: 365, value: g.days, inputmode: 'numeric' });
+  const info = h('p', { class: 'muted', style: 'margin:0;font-size:13px' });
+  const offs = () => {
+    const sv = startSel.value, ev = endSel.value;
+    const a = sv === 'here' ? hereOff : sv ? d.before[toc[+sv.slice(1)].s] : 0;
+    let z = d.total; if (ev) { const e = entryRange(+ev.slice(1))[1]; z = e < d.sections.length ? d.before[e] : d.total; }
+    return [a, z];
+  };
+  const upd = () => { const [a, z] = offs(), n = Math.max(1, Math.min(365, +days.value || 1)); info.textContent = z > a ? `${fmtN(Math.round(z - a))} caractères → environ ${fmtN(Math.round((z - a) / n))} par portion.` : 'La fin doit venir après le début.'; };
+  startSel.onchange = upd; endSel.onchange = upd; days.oninput = upd; upd();
+  const hereBtn = h('button', { class: 'btn small', onclick: () => { hereOff = Math.round(pos); hereOpt.textContent = 'Ici · ' + chapterOf(R.cur).label; if (!hereOpt.isConnected) startSel.append(hereOpt); startSel.value = 'here'; upd(); } }, 'À partir d\'ici');
+  const save = async on => {
+    const [a, z] = offs(); if (on && !(z > a)) return;
+    const sv = startSel.value;
+    b.goal = { on, days: Math.max(1, Math.min(365, +days.value || 30)), start: a || null, end: z >= d.total ? null : z,
+      startLabel: sv === 'here' ? hereOpt.textContent : '', endLabel: '' };
+    await DB.put('books', b); window.Sync && Sync.dirty();
+    Goal.reset(); m.close(); onScroll();
+    toast(on ? `Objectif : ${b.goal.days} portions.` : 'Objectif désactivé.');
+  };
+  const m = modal('Objectif de lecture', h('div', { class: 'pb goal-form' },
+    h('p', { class: 'muted', style: 'margin:0;font-size:13.5px' }, 'Le texte est découpé en portions égales. Une ligne montre où s\'arrêter, sans calendrier : sauter un jour ne change rien.'),
+    h('label', { class: 'field' }, 'Nombre de portions (jours)', days),
+    h('div', { class: 'row2' }, h('label', { class: 'field' }, 'Début', startSel), hereBtn),
+    h('label', { class: 'field' }, 'Fin', endSel),
+    info,
+    h('div', { class: 'confirm-row' },
+      b.goal && b.goal.on ? h('button', { class: 'btn', onclick: () => save(false) }, 'Désactiver') : null,
+      h('button', { class: 'btn primary', onclick: () => save(true) }, b.goal && b.goal.on ? 'Mettre à jour' : 'Activer'))));
 }
 function goSection(si, frag) {
   const s = R.data.sections[si]; if (!s) return;
@@ -1951,7 +2071,7 @@ function showToc() {
   const toc = R.data.toc; const cur = chapterOf(R.cur).idx;
   const scrim = h('div', { class: 'scrim', onclick: () => close() });
   const bid = R.book.id;
-  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'overview'); } }, 'Stats'), h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'rare'); } }, 'Caractères rares')),
+  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'overview'); } }, 'Stats'), h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'rare'); } }, 'Caractères rares'), h('button', { class: 'btn small', onclick: () => { close(); showGoal(); } }, R.book.goal && R.book.goal.on ? `Objectif · ${R.book.goal.days} j` : 'Objectif')),
     R.data.tocNote ? h('div', { class: 'note' }, R.data.tocNote) : null,
     toc.map((t, i) => h('div', { class: 'row' }, h('a', { href: '#', class: `lv${Math.min(t.level, 2)}${i === cur ? ' cur' : ''}`, onclick: e => { e.preventDefault(); close(); goSection(t.s); } }, t.title),
       isLeafEntry(i) ? h('button', { title: 'Préparer ce chapitre : ses mots les plus rares', onclick: () => { close(); showPrep(i); } }, '预习') : null)));
@@ -2373,7 +2493,8 @@ function annotate(sec) {
     if (buf) frag.append(buf);
     node.replaceWith(frag);
   }
-  if (VH.done.has(sec)) VH.mark(sec);
+  const host = sec.closest('section') || sec;
+  if (VH.done.has(host)) VH.later(host);
 }
 /* ================= highlight the words saved for this book ================= */
 const VH = {
@@ -2390,6 +2511,7 @@ const VH = {
     this.on = false; this.obs && this.obs.disconnect(); this.obs = null; this.done.clear();
     if (this.hls) this.hls.forEach(x => x.clear());
   },
+  later(sec) { (this.pend || (this.pend = new Set())).add(sec); clearTimeout(this.t); this.t = setTimeout(() => { const p = this.pend; this.pend = null; if (this.on) p.forEach(x => this.mark(x)); }, 120); },
   refresh() { if (!this.on) return; ensureFreq(); for (const sec of [...this.done.keys()]) this.mark(sec); },
   colorOf(w) { let x = 0; for (const c of w) x = (x * 31 + c.codePointAt(0)) >>> 0; return x % 8; },
   mark(sec) {
@@ -2416,14 +2538,34 @@ const VH = {
   }
 };
 function unannotate(sec) {
-  if (!sec.dataset.py) return;
+  if (!sec.dataset.py && !sec.querySelector('[data-py]')) return;
+  for (const el of $$('[data-py]:not(ruby)', sec)) delete el.dataset.py;
   for (const rb of $$('ruby[data-py]', sec)) { $$('rt', rb).forEach(x => x.remove()); rb.replaceWith(rb.textContent); }
   sec.normalize(); delete sec.dataset.py;
   if (VH.done.has(sec)) VH.mark(sec);
 }
 let pyObs = null;
+function cvRefresh() {
+  if (!R.data) return;
+  const b = $('#book'); b.classList.remove('cv');
+  const els = R.data.sections.flatMap(s => leafBlocks(s.el)).filter(e => e !== s0(e));
+  const hs = els.map(e => e.offsetHeight);
+  els.forEach((e, i) => { e.classList.add('cvb'); e.style.containIntrinsicBlockSize = `auto ${hs[i]}px`; });
+  b.classList.add('cv');
+}
+const s0 = e => e.tagName === 'SECTION' ? e : null;
+let cvT = 0;
+addEventListener('resize', () => { clearTimeout(cvT); cvT = setTimeout(() => { if (R.data && !$('#reader').hidden) keepPlace(cvRefresh); }, 250); });
 function keepPlace(fn) {
   if (!R.data || $('#reader').hidden) return fn();
+  // anchor on the paragraph at the top of the screen (exact), else on the section (proportional)
+  const y = barH() + 2, book = $('#book'), hit = document.elementsFromPoint(innerWidth / 2, y).find(e => book.contains(e) && e !== book);
+  const bl = hit ? hit.closest('.cvb') || hit.closest(BLOCK_SEL) : null;
+  if (bl && bl.closest('section')) {
+    const r0 = bl.getBoundingClientRect(), f = (y - r0.top) / Math.max(1, r0.height);
+    fn();
+    const r1 = bl.getBoundingClientRect(); window.scrollTo(0, r1.top + scrollY + f * r1.height - y); return;
+  }
   const si = currentSection(), el = R.data.sections[si].el;
   const r = el ? (barH() - el.getBoundingClientRect().top) / Math.max(1, el.offsetHeight) : 0;
   fn();
@@ -2435,18 +2577,32 @@ function startPinyin() {
   if (!Words.ready) { Words.load().then(() => { if (settings.pinyin && R.data) { R.data.sections.forEach(s => unannotate(s.el)); startPinyin(); } }).catch(() => {}); }
   ensureFreq();
   pyObs && pyObs.disconnect();
+  // annotate paragraph by paragraph as they come near the screen: laying out thousands of <ruby> at once froze the page
   keepPlace(() => {
     $('#book').classList.add('py-on');
     const si = currentSection();
-    for (let k = Math.max(0, si - 1); k <= Math.min(R.data.sections.length - 1, si + 1); k++) annotate(R.data.sections[k].el);
+    for (let k = Math.max(0, si - 1); k <= Math.min(R.data.sections.length - 1, si + 1); k++)
+      for (const bl of leafBlocks(R.data.sections[k].el)) { const r = bl.getBoundingClientRect(); if (r.bottom > -innerHeight && r.top < innerHeight * 2) annotate(bl); }
+    cvRefresh();
   });
-  pyObs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) annotate(e.target); }, { rootMargin: '1500px 0px' });
-  R.data.sections.forEach(s => pyObs.observe(s.el));
+  // visible paragraphs are annotated at once; the ones a few screens away are queued and done while the reader is idle
+  const queue = new Set(); let busy = false;
+  const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 400 }) : f => setTimeout(f, 30);
+  const pump = () => {
+    if (busy || !queue.size) return; busy = true;
+    idle(dl => { busy = false; const t0 = performance.now();
+      for (const bl of queue) { queue.delete(bl); if (!bl.dataset.py && bl.isConnected) annotate(bl); if (!dl || (dl.timeRemaining ? dl.timeRemaining() < 8 : performance.now() - t0 > 8)) break; }
+      pump(); });
+  };
+  const near = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.py) queue.add(e.target); pump(); }, { rootMargin: '2500px 0px' });
+  const now = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.py) { annotate(e.target); queue.delete(e.target); } }, { rootMargin: '200px 0px' });
+  pyObs = { disconnect() { near.disconnect(); now.disconnect(); queue.clear(); } };
+  R.data.sections.forEach(s => leafBlocks(s.el).forEach(bl => { if (!bl.dataset.py) { near.observe(bl); now.observe(bl); } }));
 }
 function stopPinyin() {
   pyObs && pyObs.disconnect(); pyObs = null;
   if (!R.data) return;
-  keepPlace(() => { $('#book').classList.remove('py-on'); R.data.sections.forEach(s => unannotate(s.el)); });
+  keepPlace(() => { $('#book').classList.remove('py-on'); R.data.sections.forEach(s => unannotate(s.el)); cvRefresh(); });
 }
 function setPinyin(on) {
   settings.pinyin = !!on; applySettings(); hidePop();
@@ -3075,6 +3231,7 @@ $('#sync-btn').addEventListener('click', () => { if (Sync.enabled() && !Sync.tok
 /* ================= navigation & boot ================= */
 function show(view) {
   for (const id of ['lib', 'voc', 'reader']) $('#' + id).hidden = id !== view;
+  document.body.classList.toggle('reading', view === 'reader');
   if (view !== 'reader') { hidePop(); ttsStop(true); $('#notepop').hidden = true; }
 }
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
