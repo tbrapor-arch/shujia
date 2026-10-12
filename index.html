@@ -304,6 +304,9 @@ body.reading { background: var(--rbg); }
 .pop .char .d b { font-weight: 600; margin-right: 4px; }
 .pop .pf { display: flex; align-items: center; gap: 6px; padding: 8px 14px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .pop .pf .grow { flex: 1; }
+.pop .pf { flex-wrap: wrap; }
+.pop .say { border: 0; background: transparent; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+.pop .say:hover, .pop .say.on { color: var(--accent); background: var(--accent-soft); }
 .pop kbd { font-family: var(--f-ui); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
 
 /* ---------- Vocabulary ---------- */
@@ -2316,7 +2319,7 @@ function renderPop() {
     }).join('')}</div></div>`;
   }
   const sheet = isTouch();
-  pop.innerHTML = `<div class="ph"><div class="grow"><span class="hw">${esc(r.word)}</span>${other ? `<span class="alt-form">${esc(other)}</span>` : ''}${idiom ? '<span class="idiom">成语</span>' : ''}</div>
+  pop.innerHTML = `<div class="ph"><div class="grow"><span class="hw">${esc(r.word)}</span>${other ? `<span class="alt-form">${esc(other)}</span>` : ''}${idiom ? '<span class="idiom">成语</span>' : ''}</div>${ttsOK() ? '<button class="say" data-act="say" title="Écouter (S)" aria-label="Écouter">🔊</button>' : ''}
     <button class="btn small add ${isSaved ? 'saved' : 'primary'}" data-act="add">${isSaved ? '✓ Dans ta liste' : '＋ Ajouter'}</button>
     ${sheet || P.pinned ? '<button class="icon-btn" data-act="close" aria-label="Fermer">✕</button>' : ''}</div>
     ${ents}${alts}${chars}
@@ -2324,7 +2327,7 @@ function renderPop() {
     <button class="btn small" data-act="ex" aria-expanded="${!!P.showEx}">Exemples</button>
     <button class="btn small" data-act="sent" title="Sélectionner toute la phrase">Phrase</button>
     <button class="btn small" data-act="ai" title="Ouvre Claude avec cette phrase (question copiée aussi)">Claude ↗</button>
-    <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>E</kbd> exemples · <kbd>C</kbd> Claude</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>E</kbd> · <kbd>C</kbd></span>')}</div>
+    <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>S</kbd> écouter · <kbd>E</kbd> exemples · <kbd>C</kbd> Claude</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>S</kbd> · <kbd>E</kbd> · <kbd>C</kbd></span>')}</div>
     <div class="sec ex" id="pop-ex" ${P.showEx ? '' : 'hidden'}></div>`;
   pop.classList.toggle('sheet', sheet);
   pop.classList.toggle('passive', !sheet && !P.pinned);
@@ -2373,6 +2376,7 @@ $('#pop').addEventListener('click', e => {
   if (act === 'add') toggleSave(); else if (act === 'close') hidePop(); else if (act === 'prev') { P.pinned = true; shiftHit(-1); } else if (act === 'next') { P.pinned = true; shiftHit(1); }
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (act === 'ai') askClaude();
+  else if (act === 'say') sayWord();
   else if (act === 'sent') { const st = P.hit.start; hidePop(); selectSentence(st.node, st.off); }
 });
 function openClaude(q) {
@@ -2380,6 +2384,19 @@ function openClaude(q) {
   try { navigator.clipboard.writeText(q).then(() => toast('Question copiée — colle-la dans Claude si elle n’apparaît pas.'), () => {}); } catch {}
 }
 function bookSrc() { const b = R.book || {}; return b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : ''; }
+// pronounce the word in the pop-up with the same voice as 听 (the book's script picks zh-TW / zh-CN)
+function sayWord() {
+  if (!P.hit || !ttsOK()) return;
+  const w = P.results[P.sel].word;
+  if (TTS.playing) ttsStop(true);
+  speechSynthesis.cancel();
+  if (!TTS.voice) TTS.voice = pickVoice();
+  const u = new SpeechSynthesisUtterance(w);
+  if (TTS.voice) { u.voice = TTS.voice; u.lang = TTS.voice.lang; } else u.lang = bookIsTrad() ? 'zh-TW' : 'zh-CN';
+  u.rate = Math.min(1, settings.ttsRate || 1) * 0.9;
+  const b = $('#pop .say'); if (b) { b.classList.add('on'); u.onend = u.onerror = () => b.classList.remove('on'); }
+  speechSynthesis.speak(u);
+}
 function askClaude() {
   if (!P.hit) return;
   const word = P.results[P.sel].word, sent = sentenceFor(P.hit, word.length) || word;
@@ -2485,6 +2502,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape' && !$('#notepop').hidden) $('#notepop').hidden = true;
   else if ((e.key === 'a' || e.key === 'A') && P.hit) { e.preventDefault(); toggleSave(); }
   else if ((e.key === 'c' || e.key === 'C') && P.hit && !e.ctrlKey && !e.metaKey) { e.preventDefault(); askClaude(); }
+  else if ((e.key === 's' || e.key === 'S') && P.hit && !e.ctrlKey && !e.metaKey) { e.preventDefault(); sayWord(); }
   else if ((e.key === 'e' || e.key === 'E') && P.hit) { e.preventDefault(); P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); setPinyin(!settings.pinyin); }
 });
