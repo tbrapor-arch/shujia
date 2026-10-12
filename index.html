@@ -715,6 +715,7 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
 
 /* ================= settings ================= */
 const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+if (settings.vocabHl === true) settings.vocabHl = 'book';
 if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
 function applySettings() {
   const r = $('#reader');
@@ -2189,8 +2190,8 @@ function showSettings() {
         seg('pyPos', [['under', 'En dessous'], ['over', 'Au-dessus']]),
         seg('pyColor', [['mono', 'Neutre'], ['tones', 'Couleurs des tons']])),
       h('div', { class: 'set-group' }, h('h3', null, 'Surligner mes mots de ce livre'),
-        seg('vocabHl', [[false, 'Non'], [true, 'Oui']], v => { settings.vocabHl = v; applySettings(); v ? VH.start() : VH.stop(); }),
-        h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Chaque mot de ta liste pour ce livre garde sa couleur pastel, partout où il revient.')),
+        seg('vocabHl', [[false, 'Non'], ['chapter', 'Ce chapitre'], ['book', 'Ce livre'], ['all', 'Toute la bibliothèque']], v => { settings.vocabHl = v; applySettings(); VH.stop(); if (v) VH.start(); }),
+        h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Ce chapitre : les mots ajoutés dans le chapitre, surlignés dans ce chapitre. Ce livre : ta liste du livre, partout. Toute la bibliothèque : tous tes mots, quel que soit le livre. Chaque mot garde sa couleur pastel.')),
       h('div', { class: 'set-group' }, h('h3', null, 'Fond'), seg('paper', [['auto', 'Automatique'], ['sepia', 'Sépia'], ['night', 'Nuit']])),
       isTouch() ? null : h('div', { class: 'set-group' }, h('h3', null, 'Dictionnaire'), seg('mode', [['hover', 'Au survol'], ['click', 'Au clic']]),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Au survol : la définition suit la souris. Clique sur un mot pour figer le pop-up, puis appuie sur A pour l\'ajouter.'))));
@@ -2587,7 +2588,7 @@ const VH = {
   start() {
     if (!R.data || !settings.vocabHl || !window.Highlight || !CSS.highlights) return;
     if (!this.hls) { this.hls = Array.from({ length: 8 }, () => { const x = new Highlight(); x.priority = -1; return x; }); this.hls.forEach((x, i) => CSS.highlights.set('vw' + i, x)); }
-    this.on = true; Words.load().catch(() => {}).then(() => this.refresh());
+    this.on = true; Words.load().catch(() => {}).then(() => this.refresh(true));
     this.obs && this.obs.disconnect();
     this.obs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !this.done.has(e.target)) this.mark(e.target); }, { rootMargin: '1500px 0px' });
     R.data.sections.forEach(s => this.obs.observe(s.el));
@@ -2597,21 +2598,32 @@ const VH = {
     if (this.hls) this.hls.forEach(x => x.clear());
   },
   later(sec) { (this.pend || (this.pend = new Set())).add(sec); clearTimeout(this.t); this.t = setTimeout(() => { const p = this.pend; this.pend = null; if (this.on) p.forEach(x => this.mark(x)); }, 120); },
-  refresh() { if (!this.on) return; ensureFreq(); for (const sec of [...this.done.keys()]) this.mark(sec); },
+  // which words to colour: this chapter's / this book's / the whole library's list (simplified forms)
+  async load() {
+    const mode = settings.vocabHl, list = mode === 'all' ? await DB.all('vocab') : R.book ? await DB.byBook(R.book.id) : [];
+    this.set = new Set(list.map(v => v.simp)); this.byChap = new Map();
+    if (mode === 'chapter') for (const v of list) { const k = v.chapterIdx ?? -1; if (!this.byChap.has(k)) this.byChap.set(k, new Set()); this.byChap.get(k).add(v.simp); }
+    this.maxLen = Math.min(12, Math.max(1, ...[...this.set].map(w => w.length)));
+  },
+  async refresh() { if (!this.on) return; ensureFreq(); await this.load(); if (!this.on) return; for (const sec of [...this.done.keys()]) this.mark(sec); },
   colorOf(w) { let x = 0; for (const c of w) x = (x * 31 + c.codePointAt(0)) >>> 0; return x % 8; },
   mark(sec) {
     const old = this.done.get(sec); if (old) for (const [i, r] of old) this.hls[i].delete(r);
     if (!this.on) { this.done.delete(sec); return; }
     const out = []; this.done.set(sec, out);
-    const saved = R.saved; if (!saved || !saved.size) return;
+    if (!this.set) return;
+    const saved = settings.vocabHl === 'chapter' ? (this.byChap.get(chapterOf(+sec.dataset.i || 0).idx) || new Set()) : this.set;
+    if (!saved.size) return;
     ensureFreq();
-    const isTrad = bookIsTrad(), multi = [...saved].filter(w => w.length > 1).sort((a, b) => b.length - a.length), single = new Set([...saved].filter(w => w.length === 1));
+    const isTrad = bookIsTrad(), single = new Set([...saved].filter(w => w.length === 1)), maxL = this.maxLen;
     for (const bl of leafBlocks(sec)) {
       const tw = textWalker(bl), map = []; let full = '', n;
       while ((n = tw.nextNode())) { for (let i = 0; i < n.data.length; i++) map.push([n, i]); full += n.data; }
       if (!full || !HAN.test(full)) continue;
       const ns = normZh(full, isTrad), used = new Uint8Array(ns.length), hits = [];
-      for (const w of multi) { let i = ns.indexOf(w); while (i >= 0) { let free = true; for (let k = i; k < i + w.length; k++) if (used[k]) { free = false; break; } if (free) { used.fill(1, i, i + w.length); hits.push([i, i + w.length, w]); } i = ns.indexOf(w, i + w.length); } }
+      for (let i = 0; i < ns.length; i++) {
+        for (let L = Math.min(maxL, ns.length - i); L >= 2; L--) { const w = ns.substr(i, L); if (saved.has(w)) { used.fill(1, i, i + L); hits.push([i, i + L, w]); i += L - 1; break; } }
+      }
       if (single.size && Words.ready) {
         const re = /[㐀-䶿一-鿿豈-﫿〇]+/g; let m;
         while ((m = re.exec(ns))) for (const [a, b] of segment(m[0])) if (b - a === 1 && single.has(m[0][a]) && !used[m.index + a]) hits.push([m.index + a, m.index + b, m[0][a]]);
