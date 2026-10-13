@@ -552,6 +552,7 @@ const LS = {
 };
 
 /* ================= storage (IndexedDB, memory fallback) ================= */
+function fileIdsTouch(id, has) { try { const a = new Set(JSON.parse(localStorage.getItem('shujia.fileIds') || '[]')); has ? a.add(id) : a.delete(id); localStorage.setItem('shujia.fileIds', JSON.stringify([...a])); } catch {} }
 const DB = (() => {
   let dbp = null, mem = null;
   function open() {
@@ -589,10 +590,12 @@ const DB = (() => {
     async get(s, k) { const db = await open(); return db ? req(s, 'readonly', st => st.get(k)) : mem[s].get(k); },
     async put(s, o, opts) {
       if ((s === 'books' || s === 'vocab') && !(opts && opts.touch === false)) { o.updatedAt = Date.now(); window.Sync && Sync.dirty(); }
+      if (s === 'files') fileIdsTouch(o.id, true);
       const db = await open(); if (!db) { mem[s].set(key(s, o), o); return; } return req(s, 'readwrite', st => st.put(o));
     },
     async del(s, k, opts) {
       if ((s === 'books' || s === 'vocab') && !(opts && opts.sync)) { const t = (await this.get('kv', 'tomb')) || { k: 'tomb', map: {} }; t.map[k] = Date.now(); await this.put('kv', t); window.Sync && Sync.dirty(); }
+      if (s === 'files') fileIdsTouch(k, false);
       const db = await open(); if (!db) { mem[s].delete(k); return; } return req(s, 'readwrite', st => st.delete(k));
     },
     async keys(s) { const db = await open(); return db ? req(s, 'readonly', st => st.getAllKeys()) : [...mem[s].keys()]; },
@@ -1933,6 +1936,7 @@ let openSeq = 0;
 async function openBook(id) {
   const my = ++openSeq;
   const book = await DB.get('books', id); let file = await DB.get('files', id);
+  if (book && !file && Sync.enabled() && !Sync.connected() && Sync.clientId()) { try { await Sync.login(); } catch {} }
   if (book && !file && Sync.connected()) { toast('Téléchargement du livre depuis Google Drive…'); try { file = await Sync.fetchBookFile(book); } catch (e) { console.error(e); } }
   if (!book || !file) { toast(Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
   closeReader(true);
@@ -3661,6 +3665,15 @@ const Sync = {
   }
 };
 window.Sync = Sync;
+async function keepAllOffline(st) {
+  if (!Sync.connected()) { try { await Sync.login(); } catch { return; } }
+  const [books, local] = await Promise.all([DB.all('books'), DB.keys('files')]); const have = new Set(local);
+  const todo = books.filter(b => !have.has(b.id) && !b.sample); let n = 0;
+  for (const b of todo) { st.textContent = `Téléchargement ${++n}/${todo.length} : ${b.title}…`; try { await Sync.fetchBookFile(b); } catch (e) { console.error(e); } }
+  try { navigator.storage && navigator.storage.persist && await navigator.storage.persist(); } catch {}
+  st.textContent = todo.length ? `${todo.length} livre${todo.length > 1 ? 's' : ''} téléchargé${todo.length > 1 ? 's' : ''} : tout est sur cet appareil.` : 'Tous tes livres sont déjà sur cet appareil.';
+  renderLibrary();
+}
 function showSyncPanel() {
   const st = h('p', { id: 'sync-status', class: 'muted', style: 'margin:0;font-size:13.5px' }, Sync.status || (Sync.enabled() ? 'Connecté.' : 'Pas encore connecté.'));
   const last = LS.get('lastSync', 0);
@@ -3671,9 +3684,17 @@ function showSyncPanel() {
     last ? h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Dernière synchronisation : ' + new Date(last).toLocaleString('fr-FR')) : null,
     h('div', { class: 'confirm-row' },
       h('button', { class: 'btn primary', onclick: async () => { await Sync.run(true); st.textContent = Sync.status; } }, Sync.enabled() ? 'Synchroniser maintenant' : 'Se connecter à Google Drive'),
+      Sync.enabled() ? h('button', { class: 'btn', onclick: () => keepAllOffline(st) }, 'Garder tous mes livres sur cet appareil') : null,
       Sync.enabled() ? h('button', { class: 'btn', onclick: async () => { await Sync.logout(); m.close(); toast('Déconnecté de Google Drive. Tes données restent sur cet appareil.'); } }, 'Se déconnecter') : null),
     h('details', { open: !Sync.clientId() }, h('summary', { style: 'cursor:pointer;color:var(--accent);font-weight:600;font-size:13px' }, 'Identifiant client Google'),
       h('div', { style: 'display:grid;gap:6px;margin-top:8px' }, cid, h('span', { class: 'muted', style: 'font-size:12.5px' }, 'L\'identifiant OAuth de type « Application Web » créé dans Google Cloud, avec l\'adresse du site comme origine autorisée.'))));
+  const lost = LS.get('lostFiles', null);
+  const sto = h('p', { class: 'muted', style: 'margin:0;font-size:12.5px' });
+  if (navigator.storage && navigator.storage.persisted) Promise.all([navigator.storage.persisted(), navigator.storage.estimate ? navigator.storage.estimate() : {}]).then(([p, e]) => {
+    sto.textContent = `Stockage sur cet appareil : ${p ? 'protégé (le navigateur ne l\u2019efface pas)' : 'non protégé — le navigateur peut l\u2019effacer s\u2019il manque de place'}${e && e.usage ? ' · ' + Math.round(e.usage / 1e6) + ' Mo utilisés' : ''}.`
+      + (lost ? ` Le ${new Date(lost.at).toLocaleDateString('fr-FR')}, le navigateur a effacé : ${lost.titles.join(', ')}.` : '');
+  });
+  body.append(sto);
   const m = modal('Synchronisation Google Drive', body);
   if (Sync.gisOK === false || location.protocol !== 'https:' && location.hostname !== 'localhost') st.textContent = 'La synchronisation ne fonctionne que sur la version en ligne de l\'appli (GitHub Pages).';
 }
@@ -3747,6 +3768,11 @@ const SAMPLE = `第一章 雨天
   if (!(await DB.ok())) $('#storage-note').textContent = 'Attention : ce navigateur bloque le stockage local. Tes livres et ton vocabulaire seront perdus à la fermeture de la page.';
   else { try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {} }
   const books = await DB.all('books');
+  try { // book files that vanished without the app deleting them = cleared by the browser
+    const had = JSON.parse(localStorage.getItem('shujia.fileIds') || 'null'), now = new Set(await DB.keys('files'));
+    if (had) { const lost = had.filter(id => !now.has(id) && books.some(b => b.id === id)); if (lost.length) { LS.set('lostFiles', { at: Date.now(), titles: lost.map(id => books.find(b => b.id === id).title) }); } }
+    localStorage.setItem('shujia.fileIds', JSON.stringify([...now]));
+  } catch {}
   for (const b of books) { // books imported before titles were cleaned
     if (/\s--\s/.test(b.title || '') || /^(unknown|未知|佚名|anonymous)$/i.test(b.author || '')) { Object.assign(b, cleanMeta(b.title, b.author)); await DB.put('books', b); }
   }
