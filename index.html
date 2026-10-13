@@ -131,7 +131,7 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 #reader[data-paper="night"] { --rbg: #101311; --rink: #C9CEC8; --line: #262C28; --surface: #181D1A; --muted: #8B938D; --accent-soft: #1E2C27; color-scheme: dark; }
 body.reading { background: var(--rbg); }
 /* paragraphs off screen are neither laid out nor painted; their height is measured beforehand so scrolling and positions stay exact */
-.book.cv .cvb { content-visibility: auto; }
+.book.cv .cvb { content-visibility: auto; overflow-clip-margin: 1em; } /* the chengyu line below the pinyin may sit under the paragraph box */
 #reader[data-paper="sepia"], #reader[data-paper="night"] { }
 .rbar { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding: env(safe-area-inset-top, 0px) 8px 0; background: var(--rbg); border-bottom: 1px solid var(--line); }
 .rbar-in { height: var(--bar-h); display: flex; align-items: center; gap: 4px; max-width: 1080px; margin: 0 auto; }
