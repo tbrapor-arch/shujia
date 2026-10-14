@@ -1,5 +1,5 @@
 // 书架 service worker: the app works offline once opened
-const V = 'shujia-3c3ae13c';
+const V = 'shujia-d8b4c689';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 // libraries and data never change under the same address: they live in a cache kept across updates, filled at install so the app opens books offline
 const STATIC = 'shujia-static-1';

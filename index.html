@@ -2052,15 +2052,19 @@ function parseThemePage(text) {
   let sec = null, last = null, mode = 'words', pendingTitle = '';
   const secOf = n => { let x = out.sections.find(y => y.n === n); if (!x) { x = { n, title: '', entries: [], sentences: [] }; out.sections.push(x); } return x; };
   const hanCount = l => (l.match(new RegExp(`[${HANP}]`, 'g')) || []).length;
-  const lines = text.replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const lines = text.replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    .flatMap(l => { const ps = l.split(/\s+\|\s+/); return ps.length > 1 && ps.every(x => new RegExp(`[${HANP}]`).test(x)) ? ps : [l]; }); // two-column OCR: "词 cí : sens | 词 cí : sens"
   for (const l of lines) {
     let m;
     if (l.startsWith('#')) continue; // comments (instructions in the Word template)
-    if ((m = l.match(new RegExp(`^([IVXLC]+)\\s*[.．]\\s*[-–—]?\\s*([${HANP}]+)\\s*([${PY_CH}\\s]*?)\\s*[:：]\\s*(.+)$`)))) {
-      out.header = { num: m[1], zh: m[2], py: m[3].trim(), fr: m[4].trim() }; last = null; mode = 'words'; continue;
+    if ((m = l.match(new RegExp(`^([IVXLC]+)\\s*[.．]\\s*[-–—]?\\s*([${HANP}、，,]+?)\\s*([${PY_CH}\\s,，'’-]*?)\\s*[:：]\\s*(.+)$`)))) {
+      if (out.header) { out.bad.push(l); continue; }
+      out.header = { num: m[1], zh: m[2].replace(/[,，]$/, ''), py: m[3].trim(), fr: m[4].trim() }; last = null; mode = 'words'; continue;
     }
+    if (out.header && /^[IVXLC][IVXLC]{0,6}[^\u3400-\u9FFF]{0,3}[-–—~=]/.test(l)) continue; // the scanned book's own title line, misread by OCR
     if (/成语|成語/.test(l) && /歇后语|歇後語/.test(l) && hanCount(l) < 20) { mode = 'expr'; last = null; continue; }
     if (/^\d{1,2}$/.test(l)) { if (mode === 'expr') continue; sec = secOf(l); if (pendingTitle) { sec.title = pendingTitle; pendingTitle = ''; } last = null; continue; }
+    if (l.replace(/[\s|.…·,，、]/g, '').length <= 2 || (hanCount(l) <= 2 && !/[:：]|\.{2,}/.test(l) && !/[a-zà-ü]{3,}/i.test(l))) continue; // OCR crumbs
     if (/^[.…·\s]+$/.test(l)) continue;
     if (mode === 'expr') {
       if ((m = l.match(/^(\d{1,3})\s*[、,.，]\s*(.+)$/))) {
@@ -2082,7 +2086,8 @@ function parseThemePage(text) {
       const ZH = new RegExp(`^((?:[${HANP}]|\\([${HANP}/]+\\)|\\*|\\s)+)(.*)$`);
       const vars = head.split(/\s*[,，、]\s*/).map(v => { const mm = v.match(ZH); return mm ? { zh: mm[1].replace(/\s|\*/g, ''), py: mm[2].trim() } : { zh: '', py: '' }; }).filter(v => new RegExp(`[${HANP}]`).test(v.zh));
       const isPy = p0 => /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]|\/\//.test(p0);
-      if (vars.length && vars.every(v => isPy(v.py))) { if (!sec) sec = secOf('1'); last = { zh: vars.map(v => Object.assign(splitST(v.zh), { py: v.py })), fr }; sec.entries.push(last); continue; }
+      if (vars.length && (sp ? vars.some(v => v.py || vars.length > 1) || fr : vars.every(v => isPy(v.py)))) { if (!sec) sec = secOf('1'); last = { zh: vars.map(v => Object.assign(splitST(v.zh), { py: v.py })), fr }; sec.entries.push(last); continue; }
+      if (!sp && hanCount(l) >= 8 && hanCount(l) >= l.replace(/\s/g, '').length * 0.6) { if (!sec) sec = secOf('1'); sec.sentences.push(l.replace(/\s+/g, '')); last = { sent: sec }; continue; }
       if (hanCount(l) <= 6 && new RegExp(`[${PY_CH}]{3,}`).test(l) && !vars.some(v => isPy(v.py))) { pendingTitle = l; continue; } // sub-heading like "疾病 La maladie"
       out.bad.push(l); continue;
     }
@@ -2094,7 +2099,7 @@ function parseThemePage(text) {
   return out;
 }
 function splitThemeDoc(text) {
-  const HEAD = new RegExp(`^\\s*[IVXLC]+\\s*[.．]\\s*[-–—]?\\s*[${HANP}]+.*[:：]`);
+  const HEAD = new RegExp(`^\\s*[IVXLC]+\\s*[.．]\\s*[-–—]\\s*[${HANP}].*[:：]`);
   const chunks = []; let cur = [];
   for (const l of text.split('\n')) { if (HEAD.test(l) && cur.some(x => x.trim() && !x.trim().startsWith('#'))) { chunks.push(cur.join('\n')); cur = []; } cur.push(l); }
   chunks.push(cur.join('\n'));
@@ -2227,13 +2232,13 @@ async function importThemePage() {
   let link0 = null;
   const placePage = (st2, parsed) => {
     let ref, theme;
-    if (link0) { ref = link0; theme = parsed.header && ref.themes.find(x => x.num === parsed.header.num || x.zh === parsed.header.zh); if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); } return { ref, theme }; }
+    if (link0) { ref = link0; theme = parsed.header && ref.themes.find(x => (parsed.header.num ? x.num === parsed.header.num : x.zh === parsed.header.zh)); if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); } return { ref, theme }; }
     if (themeSel.value && !parsed.header) { const [rid, tid] = themeSel.value.split('|'); ref = st2.refs[rid]; theme = ref && ref.themes.find(x => x.id === tid); }
     if (!theme) {
       const title = refName.value.trim() || 'Mon ouvrage';
       ref = Object.values(st2.refs).find(r => r.title === title) || Object.values(st2.refs)[0];
       if (!ref) { const id = uid(); ref = st2.refs[id] = { id, title, createdAt: Date.now(), themes: [] }; }
-      if (parsed.header) theme = ref.themes.find(x => x.num === parsed.header.num || x.zh === parsed.header.zh);
+      if (parsed.header) theme = ref.themes.find(x => (parsed.header.num ? x.num === parsed.header.num : x.zh === parsed.header.zh));
       if (!theme && themeSel.value && !parsed.header) { const [rid, tid] = themeSel.value.split('|'); const r2 = st2.refs[rid]; theme = r2 && r2.themes.find(x => x.id === tid); if (theme) ref = r2; }
       if (!theme) { theme = { id: uid(), num: '', zh: '', py: '', fr: '', sections: [], expr: [], pages: 0 }; ref.themes.push(theme); }
     }
