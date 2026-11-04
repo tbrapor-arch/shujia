@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2C6A5A">
+<meta name="color-scheme" content="light dark">
+<script>/* app theme chosen in the app wins over the phone's night mode; "only light" also opts out of the browser's forced dark mode (Samsung Internet, Chrome) */
+(function(){var t='auto';try{t=(JSON.parse(localStorage.getItem('shujia.settings')||'{}').theme)||'auto'}catch(e){}
+if(t!=='auto')document.documentElement.dataset.theme=t;
+document.querySelector('meta[name=color-scheme]').content=t==='light'?'only light':t==='dark'?'only dark':'light dark';})();</script>
 <meta name="description" content="Lecteur de romans chinois avec dictionnaire intégré.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="书架">
@@ -467,7 +472,7 @@ body.reading { background: var(--rbg); }
       <button class="tab" id="nav-lib" role="tab" aria-selected="true">Bibliothèque</button>
       <button class="tab" id="nav-voc" role="tab" aria-selected="false">Vocabulaire</button>
       <button class="tab" id="nav-log" role="tab" aria-selected="false">Journal</button>
-      <button class="tab" id="nav-thm" role="tab" aria-selected="false">Thèmes</button>
+      <button class="tab" id="nav-thm" role="tab" aria-selected="false" hidden>Thèmes</button>
     </div>
     <button class="btn" id="sync-btn" title="Synchronisation Google Drive"><span id="sync-dot" aria-hidden="true">☁</span> <span id="sync-lbl">Synchro</span></button>
     <button class="btn primary" id="import-btn">＋ Importer un livre</button>
@@ -478,6 +483,7 @@ body.reading { background: var(--rbg); }
   </div>
   <div id="shelf" class="shelf"></div>
   <div class="foot">
+    <div class="seg" id="theme-seg" style="justify-self:start;margin-bottom:6px"><span class="muted" style="align-self:center;margin-right:6px">Thème</span><button data-v="auto">Comme le téléphone</button><button data-v="light">Clair</button><button data-v="dark">Sombre</button></div>
     <span>Formats : EPUB, MOBI, AZW3 et autres formats Kindle sans protection, TXT (UTF-8, GB18030, Big5 détectés automatiquement), PDF avec texte, FB2, DOCX et HTML.</span>
     <span id="storage-note">Tes livres et ton vocabulaire sont enregistrés dans ce navigateur, et sur ton Google Drive si la synchronisation est activée.</span>
     <span>Fréquences : liste de Jun Da (Modern Chinese Character Frequency List, MTSU) ; niveaux : HSK 3.0 (2021).</span>
@@ -754,10 +760,20 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
   .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
-const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', theme: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
 if (settings.vocabHl === true) settings.vocabHl = 'book';
 if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
+function applyTheme() {
+  const t = settings.theme || 'auto', de = document.documentElement;
+  if (t === 'auto') delete de.dataset.theme; else de.dataset.theme = t;
+  const m = document.querySelector('meta[name=color-scheme]'); if (m) m.content = t === 'light' ? 'only light' : t === 'dark' ? 'only dark' : 'light dark';
+  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  const tc = document.querySelector('meta[name=theme-color]'); if (tc) tc.content = dark ? '#121614' : '#2C6A5A';
+  $$('#theme-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === t)));
+}
+function setTheme(t) { settings.theme = t; LS.set('settings', settings); applyTheme(); }
 function applySettings() {
+  applyTheme();
   const r = $('#reader');
   r.style.setProperty('--rs', settings.size + 'px');
   r.style.setProperty('--rlh', settings.lh);
@@ -2464,6 +2480,8 @@ function showSettings() {
       h('div', { class: 'set-group' }, h('h3', null, 'Surligner mes mots de ce livre'),
         seg('vocabHl', [[false, 'Non'], ['chapter', 'Ce chapitre'], ['book', 'Ce livre'], ['all', 'Toute la bibliothèque']], v => { settings.vocabHl = v; applySettings(); VH.stop(); if (v) VH.start(); }),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Ce chapitre : les mots ajoutés dans le chapitre, surlignés dans ce chapitre. Ce livre : ta liste du livre, partout. Toute la bibliothèque : tous tes mots, quel que soit le livre. Chaque mot garde sa couleur pastel.')),
+      h('div', { class: 'set-group' }, h('h3', null, 'Thème de l\'appli'), seg('theme', [['auto', 'Comme le téléphone'], ['light', 'Clair'], ['dark', 'Sombre']], v => setTheme(v)),
+        h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Clair : reste clair même si le mode nuit du téléphone est activé.')),
       h('div', { class: 'set-group' }, h('h3', null, 'Fond'), seg('paper', [['auto', 'Automatique'], ['sepia', 'Sépia'], ['night', 'Nuit']])),
       isTouch() ? null : h('div', { class: 'set-group' }, h('h3', null, 'Dictionnaire'), seg('mode', [['hover', 'Au survol'], ['click', 'Au clic']]),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Au survol : la définition suit la souris. Clique sur un mot pour figer le pop-up, puis appuie sur A pour l\'ajouter.'))));
@@ -3714,6 +3732,8 @@ function show(view) {
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
 $('#nav-log').addEventListener('click', () => showJournal());
 $('#nav-thm').addEventListener('click', () => showThemes());
+$$('#theme-seg button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.v)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme());
 $('#nav-lib').addEventListener('click', () => { show('lib'); renderLibrary(); });
 $('#import-btn').addEventListener('click', () => $('#file-in').click());
 $('#file-in').addEventListener('change', e => { importFiles([...e.target.files]); e.target.value = ''; });
