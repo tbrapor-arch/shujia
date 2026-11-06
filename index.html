@@ -368,8 +368,8 @@ body.reading { background: var(--rbg); }
 .lvl i.on { background: var(--accent); }
 
 /* ---------- Sheets / review ---------- */
-.modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(10,15,12,.45); }
-.modal .panel { background: var(--surface); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); width: min(640px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; }
+.modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); background: rgba(10,15,12,.45); }
+.modal .panel { background: var(--surface); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); width: min(640px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
 .panel header { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .panel header h2 { margin: 0; font-size: 17px; flex: 1; min-width: 0; }
 .panel .pb { padding: 16px 20px 20px; display: grid; gap: 14px; }
@@ -462,6 +462,7 @@ body.reading { background: var(--rbg); }
   .detail-top .cover { width: 84px; }
   .rbar .lbl { display: none; }
 }
+.modal, .modal .panel, .drawer, .drawer .body, .pop.sheet { overscroll-behavior: contain; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -560,7 +561,7 @@ const LS = {
 /* ================= storage (IndexedDB, memory fallback) ================= */
 function fileIdsTouch(id, has) { try { const a = new Set(JSON.parse(localStorage.getItem('shujia.fileIds') || '[]')); has ? a.add(id) : a.delete(id); localStorage.setItem('shujia.fileIds', JSON.stringify([...a])); } catch {} }
 const DB = (() => {
-  let dbp = null, mem = null;
+  let dbp = null, mem = null, tombQ = Promise.resolve();
   function open() {
     if (dbp) return dbp;
     dbp = new Promise((res, rej) => {
@@ -573,7 +574,7 @@ const DB = (() => {
           d.createObjectStore('vocab', { keyPath: 'id' }).createIndex('bookId', 'bookId');
           d.createObjectStore('kv', { keyPath: 'k' });
         };
-        rq.onsuccess = () => res(rq.result);
+        rq.onsuccess = () => { const d = rq.result; d.onclose = () => { dbp = null; }; d.onversionchange = () => { d.close(); dbp = null; }; res(d); };
         rq.onerror = () => rej(rq.error);
         rq.onblocked = () => rej(new Error('blocked'));
       } catch (e) { rej(e); }
@@ -600,9 +601,33 @@ const DB = (() => {
       const db = await open(); if (!db) { mem[s].set(key(s, o), o); return; } return req(s, 'readwrite', st => st.put(o));
     },
     async del(s, k, opts) {
-      if ((s === 'books' || s === 'vocab') && !(opts && opts.sync)) { const t = (await this.get('kv', 'tomb')) || { k: 'tomb', map: {} }; t.map[k] = Date.now(); await this.put('kv', t); window.Sync && Sync.dirty(); }
+      if ((s === 'books' || s === 'vocab') && !(opts && opts.sync)) { await this.tomb([k]); window.Sync && Sync.dirty(); }
       if (s === 'files') fileIdsTouch(k, false);
       const db = await open(); if (!db) { mem[s].delete(k); return; } return req(s, 'readwrite', st => st.delete(k));
+    },
+    // change a few fields of a stored record in one transaction, without overwriting fields edited elsewhere meanwhile
+    async patch(s, k, fields) {
+      const db = await open();
+      if (!db) { const o = mem[s].get(k); if (o) Object.assign(o, fields); return o || null; }
+      return new Promise((res, rej) => {
+        const t = db.transaction(s, 'readwrite'), st = t.objectStore(s), r = st.get(k); let out = null;
+        r.onsuccess = () => { if (r.result) { out = Object.assign(r.result, fields); st.put(out); } };
+        t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+      });
+    },
+    // deletion marks for sync, written one after another so two quick deletions can't erase each other's mark
+    tomb(ks) {
+      return (tombQ = tombQ.catch(() => {}).then(async () => {
+        const t = (await this.get('kv', 'tomb')) || { k: 'tomb', map: {} }; const now = Date.now();
+        for (const k of ks) t.map[k] = now; await this.put('kv', t);
+      }));
+    },
+    // several deletions: one tombstone write, one transaction
+    async delMany(s, ks) {
+      if (!ks.length) return;
+      if (s === 'books' || s === 'vocab') { await this.tomb(ks); window.Sync && Sync.dirty(); }
+      const db = await open(); if (!db) { ks.forEach(k => mem[s].delete(k)); return; }
+      return new Promise((res, rej) => { const t = db.transaction(s, 'readwrite'), st = t.objectStore(s); ks.forEach(k => st.delete(k)); t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
     },
     async keys(s) { const db = await open(); return db ? req(s, 'readonly', st => st.getAllKeys()) : [...mem[s].keys()]; },
     async all(s) { const db = await open(); return db ? req(s, 'readonly', st => st.getAll()) : [...mem[s].values()]; },
@@ -614,7 +639,7 @@ const DB = (() => {
 /* ================= dictionary ================= */
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
-const DICT_VERSION = '2026-09-26';
+const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1; // change these when data/cedict.txt or data/words.txt change
 const Dict = {
   ready: false, lines: null, index: null, maxLen: 0, loading: null,
   load() {
@@ -638,10 +663,16 @@ const Dict = {
         add(t, i); if (s !== t) add(s, i);
       }
       Object.assign(this, { lines, index, maxLen: Math.min(maxLen, 12), ready: true });
-    })();
+    })().catch(e => { this.loading = null; throw e; }); // offline on first visit: try again next time
     return this.loading;
   },
+  // parsed and sorted entries are kept: pinyin mode asks for the same words thousands of times (callers never modify them)
+  memo: new Map(),
   entries(w) {
+    let m = this.memo.get(w); if (m !== undefined) return m;
+    m = this.entries0(w); if (this.memo.size > 20000) this.memo.clear(); this.memo.set(w, m); return m;
+  },
+  entries0(w) {
     let e = this.index.get(w); if (e === undefined) return null;
     if (typeof e === 'number') e = [e];
     const out = e.map(i => parseEntry(this.lines[i]));
@@ -666,8 +697,8 @@ const Words = {
     if (this.loading) return this.loading;
     this.loading = (async () => {
       let text = null;
-      try { const c = await DB.get('kv', 'words'); if (c && c.v === 1) text = c.text; } catch {}
-      if (!text) { const res = await fetch('data/words.txt'); if (!res.ok) throw new Error('HTTP ' + res.status); text = await res.text(); DB.put('kv', { k: 'words', v: 1, text }).catch(() => {}); }
+      try { const c = await DB.get('kv', 'words'); if (c && c.v === WORDS_VERSION) text = c.text; } catch {}
+      if (!text) { const res = await fetch('data/words.txt'); if (!res.ok) throw new Error('HTTP ' + res.status); text = await res.text(); DB.put('kv', { k: 'words', v: WORDS_VERSION, text }).catch(() => {}); }
       const map = new Map(), idioms = new Set(); let total = 0;
       const lines = text.split('\n'); text = null;
       for (let i = 0; i < lines.length; i++) {
@@ -678,7 +709,7 @@ const Words = {
         map.set(w, f); total += f; if (b > 0) idioms.add(w);
       }
       Object.assign(this, { map, idioms, logTotal: Math.log(total), ready: true });
-    })();
+    })().catch(e => { this.loading = null; throw e; });
     return this.loading;
   }
 };
@@ -809,16 +840,19 @@ function cleanMeta(title, author) {
   return { title: t || String(title || '').trim(), author: a };
 }
 async function shrinkImage(blob, max = 520) {
+  let bmp = null;
   try {
-    const bmp = await createImageBitmap(blob);
+    bmp = await createImageBitmap(blob);
     const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas'); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
     c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close(); bmp = null; // a large cover decoded at full size weighs hundreds of MB: free it at once
     return await new Promise(r => c.toBlob(b => r(b || blob), 'image/jpeg', 0.86));
-  } catch { return blob; }
+  } catch { return blob; } finally { try { bmp && bmp.close(); } catch {} }
 }
 const xmlDoc = s => new DOMParser().parseFromString(s, 'application/xml');
 const dirOf = p => p.includes('/') ? p.slice(0, p.lastIndexOf('/') + 1) : '';
+const fragOf = href => { const f = (href || '').split('#')[1] || ''; try { return decodeURIComponent(f); } catch { return f; } };
 function resolvePath(base, href) {
   let p = href.split('#')[0]; try { p = decodeURIComponent(p); } catch {}
   if (p.startsWith('/')) p = p.slice(1); else p = base + p;
@@ -831,18 +865,27 @@ function zfile(zip, path) {
     Object.values(zip.files).find(f => f.name.toLowerCase() === path.toLowerCase()) || null;
 }
 async function openPackage(zip) {
-  const cont = xmlDoc(await zfile(zip, 'META-INF/container.xml').async('string'));
-  const opfPath = cont.getElementsByTagName('rootfile')[0].getAttribute('full-path');
-  const opf = xmlDoc(await zfile(zip, opfPath).async('string'));
+  // tags looked up by local name: some OPFs write <opf:item>; a malformed OPF (a bare & in a title) is read leniently as HTML
+  const T = (d, n) => { for (const x of [d.getElementsByTagNameNS('*', n), d.getElementsByTagName(n), d.getElementsByTagName('opf:' + n)]) if (x.length) return x; return []; };
+  const bad = d => d.getElementsByTagName('parsererror').length > 0;
+  const cf = zfile(zip, 'META-INF/container.xml'); if (!cf) throw new Error('EPUB invalide (container.xml manquant)');
+  const cont = xmlDoc(await cf.async('string'));
+  const rf = T(cont, 'rootfile')[0]; const opfPath = rf && rf.getAttribute('full-path'); const of = opfPath && zfile(zip, opfPath);
+  if (!of) throw new Error('EPUB invalide (fichier OPF introuvable)');
+  const opfStr = await of.async('string');
+  let opf = xmlDoc(opfStr);
+  if (bad(opf)) opf = xmlDoc(opfStr.replace(/&(?!#?[a-z0-9]+;)/gi, '&amp;')); // a bare & (怪书 & 其他)
+  if (bad(opf)) opf = new DOMParser().parseFromString(opfStr, 'text/html');
   const base = dirOf(opfPath);
   const manifest = new Map();
-  for (const it of opf.getElementsByTagName('item')) manifest.set(it.getAttribute('id'), { href: resolvePath(base, it.getAttribute('href')), type: it.getAttribute('media-type') || '', props: it.getAttribute('properties') || '', id: it.getAttribute('id') });
-  const spineEl = opf.getElementsByTagName('spine')[0];
-  const spine = [...opf.getElementsByTagName('itemref')].filter(r => r.getAttribute('linear') !== 'no').map(r => manifest.get(r.getAttribute('idref'))).filter(Boolean);
+  for (const it of T(opf, 'item')) if (it.getAttribute('href')) manifest.set(it.getAttribute('id'), { href: resolvePath(base, it.getAttribute('href')), type: it.getAttribute('media-type') || '', props: it.getAttribute('properties') || '', id: it.getAttribute('id') });
+  const spineEl = T(opf, 'spine')[0];
+  const spine = [...T(opf, 'itemref')].filter(r => r.getAttribute('linear') !== 'no').map(r => manifest.get(r.getAttribute('idref'))).filter(Boolean);
   return { opf, base, manifest, spine, tocId: spineEl && spineEl.getAttribute('toc') };
 }
 function dcText(opf, name) {
-  const el = opf.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', name)[0];
+  // an OPF read as HTML (malformed XML) keeps "dc:title" as a plain tag name
+  const el = opf.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', name)[0] || opf.getElementsByTagName('dc:' + name)[0];
   return el ? el.textContent.trim() : '';
 }
 async function importEpub(file) {
@@ -850,7 +893,7 @@ async function importEpub(file) {
   const pkg = await openPackage(zip); const { opf, manifest } = pkg;
   const fromName = nameParts(file.name);
   let isbn = '';
-  for (const el of opf.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'identifier')) {
+  for (const el of [...opf.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', 'identifier'), ...opf.getElementsByTagName('dc:identifier')]) {
     const v = el.textContent.replace(/^urn:isbn:/i, '').replace(/-/g, '').trim();
     const scheme = (el.getAttribute('opf:scheme') || el.getAttributeNS('http://www.idpf.org/2007/opf', 'scheme') || '').toLowerCase();
     if (scheme === 'isbn' || /^97[89]\d{10}$/.test(v)) { isbn = v; break; }
@@ -892,7 +935,12 @@ async function importTxt(file) {
   const first = text.split('\n').map(s => s.trim()).find(Boolean) || '';
   return { format: 'txt', title: n.title || first.slice(0, 30), author: n.author, isbn: '', publisher: '', date: '', lang: 'zh', description: '', cover: null };
 }
+let importing = 0;
 async function importFiles(files) {
+  importing++;
+  try { await importFilesNow(files); } finally { importing--; }
+}
+async function importFilesNow(files) {
   for (const file of files) {
     const ext = /\.fb2\.zip$/i.test(file.name) ? 'fb2' : (file.name.match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
     const fmt = FORMAT_OF[ext];
@@ -953,7 +1001,8 @@ function cleanInto(src, ctx, out) {
 }
 function tidy(sec) {
   for (const el of $$('p,div,span,b,blockquote', sec)) {
-    if (!el.textContent.replace(/[\s\u3000\u00A0]/g, '') && !el.querySelector('img,br,hr,table')) el.remove();
+    // empty, but not if it carries an anchor (chapter or note target)
+    if (!el.textContent.replace(/[\s\u3000\u00A0]/g, '') && !el.querySelector('img,br,hr,table,[id]') && !el.id) el.remove();
   }
   for (const p of $$('p', sec)) {
     const tw = document.createTreeWalker(p, NodeFilter.SHOW_TEXT); const t = tw.nextNode();
@@ -978,10 +1027,12 @@ function extractTitle(sec, len) {
 async function parseEpubForReading(blob) {
   const zip = await JSZip.loadAsync(blob);
   const pkg = await openPackage(zip);
-  const urls = [], pathIndex = new Map(), sections = [], imgJobs = [];
+  const urls = [], pathIndex = new Map(), sections = [], imgJobs = [], imgCache = new Map();
   pkg.spine.forEach((it, i) => pathIndex.set(it.href, i));
   for (let i = 0; i < pkg.spine.length; i++) {
     const it = pkg.spine[i]; const f = zfile(zip, it.href); if (!f) continue;
+    if (it.type && /^image\/(?!svg)/.test(it.type)) continue; // a picture listed as a page
+    if (i && i % 4 === 0) await breathe(); // big books: let the phone paint between files
     const str = await f.async('string');
     let doc = new DOMParser().parseFromString(str, 'application/xhtml+xml');
     if (doc.getElementsByTagName('parsererror').length) doc = new DOMParser().parseFromString(str, 'text/html');
@@ -990,14 +1041,16 @@ async function parseEpubForReading(blob) {
     const sec = document.createElement('section');
     const ctx = {
       prefix: `s${i}-`,
-      img(el, src) {
-        const p = resolvePath(dir, src); const zf = zfile(zip, p);
-        if (zf) imgJobs.push(zf.async('blob').then(b => { const u = URL.createObjectURL(b); urls.push(u); el.src = u; }));
+      img(el, src) { // one blob per image file, shared; a broken image must not stop the book from opening
+        const p = resolvePath(dir, src); const zf = zfile(zip, p); if (!zf) return;
+        if (!imgCache.has(p)) imgCache.set(p, zf.async('blob').then(b => { const u = URL.createObjectURL(b); urls.push(u); return u; }));
+        imgJobs.push(imgCache.get(p).then(u => { el.src = u; }, () => {}));
       },
       link(el, href) {
         if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { const u = safeURL(href); if (u) { el.href = u; el.target = '_blank'; el.rel = 'noopener'; } return; }
-        const [p, frag] = href.split('#'); el.href = '#';
-        el.dataset.go = p ? resolvePath(dir, p) : it.href; el.dataset.frag = frag || '';
+        const [p, frag0] = href.split('#'); el.href = '#'; let frag = frag0 || '';
+        try { frag = decodeURIComponent(frag); } catch {} // #%E7%AC%AC1 → 第1
+        el.dataset.go = p ? resolvePath(dir, p) : it.href; el.dataset.frag = frag;
       }
     };
     cleanInto(body, ctx, sec);
@@ -1015,11 +1068,11 @@ async function parseEpubForReading(blob) {
       const nd = new DOMParser().parseFromString(await zfile(zip, navItem.href).async('string'), 'text/html');
       const navs = [...nd.querySelectorAll('nav')];
       const nav = navs.find(n => (n.getAttribute('epub:type') || '').includes('toc')) || navs[0];
-      const walk = (ol, lv) => { for (const li of ol.children) { const a = li.querySelector(':scope > a, :scope > span > a'); if (a) { const href = a.getAttribute('href') || ''; toc.push({ title: norm(a.textContent), s: secOf(resolvePath(dirOf(navItem.href), href)), frag: href.split('#')[1] || '', level: lv }); } const sub = li.querySelector(':scope > ol'); if (sub) walk(sub, lv + 1); } };
+      const walk = (ol, lv) => { for (const li of ol.children) { const a = li.querySelector(':scope > a, :scope > span > a'); if (a) { const href = a.getAttribute('href') || ''; toc.push({ title: norm(a.textContent), s: secOf(resolvePath(dirOf(navItem.href), href)), frag: fragOf(href), level: lv }); } const sub = li.querySelector(':scope > ol'); if (sub) walk(sub, lv + 1); } };
       const ol = nav && nav.querySelector('ol'); if (ol) walk(ol, 0);
     } else if (tocItem && zfile(zip, tocItem.href)) {
       const nd = xmlDoc(await zfile(zip, tocItem.href).async('string'));
-      const walk = (parent, lv) => { for (const np of parent.children) { if (np.localName !== 'navPoint') continue; const label = np.getElementsByTagName('text')[0]; const c = np.getElementsByTagName('content')[0]; if (label && c) toc.push({ title: norm(label.textContent), s: secOf(resolvePath(dirOf(tocItem.href), c.getAttribute('src') || '')), frag: (c.getAttribute('src') || '').split('#')[1] || '', level: lv }); walk(np, lv + 1); } };
+      const walk = (parent, lv) => { for (const np of parent.children) { if (np.localName !== 'navPoint') continue; const label = np.getElementsByTagName('text')[0]; const c = np.getElementsByTagName('content')[0]; if (label && c) toc.push({ title: norm(label.textContent), s: secOf(resolvePath(dirOf(tocItem.href), c.getAttribute('src') || '')), frag: fragOf(c.getAttribute('src')), level: lv }); walk(np, lv + 1); } };
       const map = nd.getElementsByTagName('navMap')[0]; if (map) walk(map, 0);
     }
   } catch (e) { console.warn('TOC', e); }
@@ -1176,9 +1229,11 @@ async function openFb2(blob) { const m = await import(libURL('lib/fb2.js')); ret
 async function importFb2(file) {
   const book = await openFb2(file); const md = book.metadata || {}; const n = nameParts(file.name.replace(/(\.fb2)?\.\w+$/i, '.txt'));
   let cover = null; try { const c = await book.getCover(); if (c) cover = await shrinkImage(c); } catch {}
+  try { book.destroy && book.destroy(); } catch {}
   return { format: 'fb2', title: md.title || n.title, author: (md.author || []).map(personName).filter(Boolean).join(', ') || n.author, isbn: '', publisher: md.publisher || '', date: String(md.published || '').slice(0, 4), lang: md.language || 'zh', description: stripTags(md.description).slice(0, 1200), cover };
 }
-async function parseFb2ForReading(blob) { const book = await openFb2(blob); return foliateToReading(book, src => /^(data|blob):/.test(src || '') ? Promise.resolve(src) : null); }
+// fb2.js keeps one blob URL per section until destroy(); we read the sections directly, so free them once done
+async function parseFb2ForReading(blob) { const book = await openFb2(blob); try { return await foliateToReading(book, src => /^data:/.test(src || '') ? Promise.resolve(src) : null); } finally { try { book.destroy && book.destroy(); } catch {} } }
 async function docxRead(blob) {
   const zip = await JSZip.loadAsync(blob); const f = zip.file('word/document.xml'); if (!f) throw new Error('document Word illisible');
   const doc = xmlDoc(await f.async('string')); const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -1243,9 +1298,11 @@ class ShujiaCMapFactory {
 async function extractPdf(blob, onProgress) {
   const L = await loadPdfjs();
   const pdf = await L.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), cMapUrl: 'cmaps/', cMapPacked: true, CMapReaderFactory: ShujiaCMapFactory, isEvalSupported: false }).promise;
+  try {
   const pages = []; let chars = 0, vert = 0, horiz = 0;
   for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p); const vp = page.getViewport({ scale: 1 }); const tc = await page.getTextContent();
+    let page, vp, tc; // one unreadable page is skipped, not the whole book
+    try { page = await pdf.getPage(p); vp = page.getViewport({ scale: 1 }); tc = await page.getTextContent(); } catch (e) { console.warn('PDF page', p, e); continue; }
     const items = [];
     for (const it of tc.items) {
       if (!it.str || !it.str.trim()) continue;
@@ -1268,8 +1325,8 @@ async function extractPdf(blob, onProgress) {
     cover = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
   } catch {}
   const text = fixRadicals(pdfPagesToText(pages, vert > horiz));
-  pdf.destroy();
   return { text, meta: meta && meta.info, cover, numPages: pages.length, chars };
+  } finally { try { pdf.destroy(); } catch {} } // frees the worker even when extraction fails
 }
 // rebuild lines and paragraphs from positioned text; drops running headers, footers and page numbers
 function pdfPagesToText(pages, vertical) {
@@ -1384,7 +1441,15 @@ function coverEl(book, withProg) {
   return btn;
 }
 const starText = n => n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
-async function renderLibrary() {
+// one render at a time; calls made meanwhile collapse into a single follow-up render. Nothing to do while the library is hidden
+let libBusy = null, libAgain = false;
+function renderLibrary() {
+  if ($('#lib').hidden) return Promise.resolve();
+  if (libBusy) { libAgain = true; return libBusy; }
+  libBusy = (async () => { try { do { libAgain = false; await renderLibraryNow(); } while (libAgain && !$('#lib').hidden); } finally { libBusy = null; } })();
+  return libBusy;
+}
+async function renderLibraryNow() {
   const [books, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
   const localFiles = new Set(fileIds);
   const vcount = {}; vocab.forEach(v => { vcount[v.bookId] = (vcount[v.bookId] || 0) + 1; });
@@ -1447,10 +1512,16 @@ function modal(title, body, opts = {}) {
   m.close = close;
   return m;
 }
+// write a book edited in its sheet, but not the reading position, which may have moved since the sheet was opened
+async function saveSheet(b) {
+  const { pos, progress, lastRead, posAt, ...rest } = b; rest.updatedAt = Date.now();
+  if (R.book && R.book.id === b.id) Object.assign(R.book, rest);
+  await DB.patch('books', b.id, rest); window.Sync && Sync.dirty();
+}
 async function showDetails(id) {
   const b = await DB.get('books', id); if (!b) return;
   const n = (await DB.byBook(id)).length;
-  const save = async () => { await DB.put('books', b); renderLibrary(); };
+  const save = async () => { await saveSheet(b); renderLibrary(); };
   const q = encodeURIComponent(b.isbn || `${b.title} ${b.author}`);
   const rate = h('div', { class: 'rate', role: 'group', 'aria-label': 'Note' });
   const drawRate = () => { rate.replaceChildren(...[1, 2, 3, 4, 5].map(k => h('button', { class: k <= b.rating ? 'on' : '', 'aria-label': `${k} sur 5`, onclick: () => { b.rating = b.rating === k ? 0 : k; drawRate(); save(); } }, '★'))); };
@@ -1461,7 +1532,12 @@ async function showDetails(id) {
     Object.entries(STATUS).map(([k, v]) => h('option', { value: k, selected: b.status === k }, v)));
   const delRow = h('div', { class: 'confirm-row' });
   const drawDel = (ask) => delRow.replaceChildren(...(ask
-    ? [h('span', null, 'Supprimer le livre et ses ' + n + ' mots ?'), h('button', { class: 'btn small danger', onclick: async () => { await DB.del('books', id); await DB.del('files', id); await DB.del('kv', 'text:' + id); await DB.del('kv', 'pdftext:' + id); for (const v of await DB.byBook(id)) await DB.del('vocab', v.id); m.close(); renderLibrary(); toast('Livre supprimé.'); } }, 'Oui, supprimer'), h('button', { class: 'btn small', onclick: () => drawDel(false) }, 'Annuler')]
+    ? [h('span', null, 'Supprimer le livre et ses ' + n + ' mots ?'), h('button', { class: 'btn small danger', onclick: async () => {
+      if (R.book && R.book.id === id) { closeReader(true); show('lib'); }
+      await DB.del('books', id); await DB.del('files', id); await DB.del('kv', 'text:' + id); await DB.del('kv', 'pdftext:' + id);
+      await DB.delMany('vocab', (await DB.byBook(id)).map(v => v.id));
+      const cu = coverURLs.get(id); if (cu) { URL.revokeObjectURL(cu); coverURLs.delete(id); }
+      m.close(); renderLibrary(); toast('Livre supprimé.'); } }, 'Oui, supprimer'), h('button', { class: 'btn small', onclick: () => drawDel(false) }, 'Annuler')]
     : [h('button', { class: 'btn small ghost danger', onclick: () => drawDel(true) }, 'Supprimer de la bibliothèque')]));
   drawDel(false);
   const setCover = file => setBookCover(id, file);
@@ -1521,7 +1597,7 @@ function parseBookPage(raw) {
   if (out.pubDate) out.pubDate = out.pubDate.replace(/[^\d\-\/年月日.]+.*$/, '').trim();
   if (out.pages) out.pages = (out.pages.match(/\d+/) || [''])[0];
   if (!out.pages) { const pg = (get(['規格', '规格']) || '').match(/(\d+)\s*[頁页]/); if (pg) out.pages = pg[1]; }
-  const isbn = (out.isbnRaw || t).match(/97[89]\d{10}|\b\d{9}[\dX]\b/); if (isbn) out.isbn = isbn[0]; delete out.isbnRaw;
+  const isbn = out.isbnRaw ? out.isbnRaw.match(/97[89]\d{10}|\b\d{9}[\dX]\b/) : t.match(/97[89]\d{10}/); if (isbn) out.isbn = isbn[0]; delete out.isbnRaw;
   const r = t.match(/豆瓣评分\s*([0-9](?:\.[0-9])?)\s*(?:[^\d\n]*\n)*?\s*([\d,]+)\s*人评价/);
   if (r) { out.rating = r[1]; out.ratingCount = r[2].replace(/,/g, ''); }
   else if (/评价人数不足|目前无人评价/.test(t)) out.rating = '';
@@ -1582,7 +1658,7 @@ function pasteInfo(b, done) {
     if (p.title) b.title = p.title;
     if (p.author) b.author = p.author;
     if (p.summary) b.description = p.summary;
-    await DB.put('books', b); mm.close(); renderLibrary(); done(); toast('Fiche complétée.');
+    await saveSheet(b); mm.close(); renderLibrary(); done(); toast('Fiche complétée.');
   } }, 'Enregistrer dans la fiche');
   const mm = modal('Importer depuis Douban ou 博客來', h('div', { class: 'pb' },
     h('ol', { class: 'muted', style: 'margin:0;padding-left:20px;font-size:13.5px;display:grid;gap:2px' },
@@ -1701,10 +1777,11 @@ const diffLevel = st => { const k = REFS[sysOf(st)].s98 / REFS.cn.s98; return DI
 const tocflEquiv = n => n <= 249 ? 'TOCFL 1' : n <= 511 ? 'TOCFL 2' : n <= 811 ? 'TOCFL 3' : n <= 1318 ? 'TOCFL 4' : n <= 1922 ? 'TOCFL 5' : n <= 2529 ? 'TOCFL 6' : n <= 3133 ? 'TOCFL 7' : 'au-delà du TOCFL';
 const levelEquiv = (n, sys) => sys === 'tw' ? tocflEquiv(n) : hskEquiv(n);
 const hskEquiv = n => n <= 300 ? 'HSK 1' : n <= 600 ? 'HSK 2' : n <= 900 ? 'HSK 3' : n <= 1200 ? 'HSK 4' : n <= 1500 ? 'HSK 5' : n <= 1800 ? 'HSK 6' : n <= 3000 ? 'HSK 7–9' : 'au-delà du HSK';
-function computeStats(d) {
+async function computeStats(d) {
   ensureFreq();
-  const counts = new Map(); let chars = 0, han = 0;
+  const counts = new Map(); let chars = 0, han = 0, k = 0;
   for (const s of d.sections) {
+    if (++k % 8 === 0) await breathe(); // runs in the background: don't freeze the page on long books
     const tw = textWalker(s.el); let n;
     while ((n = tw.nextNode())) for (const c of n.data) { if (/\s/.test(c)) continue; chars++; if (HAN.test(c)) { han++; counts.set(c, (counts.get(c) || 0) + 1); } }
   }
@@ -1733,19 +1810,19 @@ const StatsQ = {
   async run() {
     if (this.running) return; this.running = true;
     try {
-      await Dict.load();
+      try { await Dict.load(); } catch { return; } // offline: stats are computed on a later visit
       while (this.q.length) {
         const id = this.q.shift(); const b = await DB.get('books', id);
         if (!b || (b.stats && b.stats.v === STATS_V)) continue;
         try {
           const d = (R.book && R.book.id === id && R.data) ? R.data : await parseBook(id);
-          const st = computeStats(d);
+          const st = await computeStats(d);
           await DB.put('kv', { k: 'text:' + id, v: 2, blocks: buildTextIndex(d).blocks }).catch(() => {});
           if (d !== R.data) d.urls.forEach(u => URL.revokeObjectURL(u));
           const fresh = await DB.get('books', id); if (!fresh) continue;
           fresh.stats = st; await DB.put('books', fresh, { touch: false });
           if (R.book && R.book.id === id) R.book.stats = st;
-          if (!$('#lib').hidden) renderLibrary();
+          renderLibrary();
         } catch (e) { console.warn('stats', e); this.failed.add(id); }
       }
     } finally { this.running = false; }
@@ -1767,7 +1844,7 @@ function sentenceIn(full, abs, len) {
 }
 function leafBlocks(sec) {
   const sel = 'p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th,dd,dt,figcaption,div';
-  const bl = $$(sel, sec).filter(b => !b.querySelector(sel));
+  const bl = $$(sel, sec).filter(b => !b.querySelector(sel) && !b.closest('.prep')); // the 预习 button is not book text
   return bl.length ? bl : [sec];
 }
 function plainText(el) { const tw = textWalker(el); let s = '', n; while ((n = tw.nextNode())) s += n.data; return s.replace(/\s+/g, ''); }
@@ -1866,7 +1943,8 @@ async function showStats(id, tab) {
   // ---- rare characters ----
   const listEl = h('div', { class: 'rare-list' });
   let shown = 0; let parsed = null;
-  const getParsed = async () => { if (parsed) return parsed; parsed = (R.book && R.book.id === id && R.data) ? R.data : await parseBook(id); return parsed; };
+  let parsedP = null; // one parse even if two rare characters are opened at once
+  const getParsed = () => parsedP || (parsedP = ((R.book && R.book.id === id && R.data) ? Promise.resolve(R.data) : parseBook(id)).then(d => (parsed = d), e => { parsedP = null; throw e; }));
   const savedSet = new Set((await DB.byBook(id)).map(v => v.simp));
   const curList = () => settings.rareMode === 'level' ? st.offLv : st.rare;
   const drawMore = () => {
@@ -1934,9 +2012,9 @@ $('#peek-back').addEventListener('click', () => {
 });
 $('#peek-stay').addEventListener('click', () => { endPeek(); onScroll(); setTimeout(savePos, 50); });
 async function goToPassage(bookId, si, sent, forms) {
-  $$('.modal').forEach(m => m.remove());
+  $$('.modal').forEach(m => m.close ? m.close() : m.remove());
   if (!R.book || R.book.id !== bookId) await openBook(bookId); else show('reader');
-  if (!R.data) return;
+  if (!R.data || !R.book || R.book.id !== bookId) return;
   startPeek();
   goSection(si);
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -1959,8 +2037,9 @@ async function openBook(id) {
   const book = await DB.get('books', id); let file = await DB.get('files', id);
   if (book && !file && Sync.enabled() && !Sync.connected() && Sync.clientId()) { try { await Sync.login(); } catch {} }
   if (book && !file && Sync.connected()) { toast('Téléchargement du livre depuis Google Drive…'); try { file = await Sync.fetchBookFile(book); } catch (e) { console.error(e); } }
+  if (my !== openSeq) return; // another book was opened, or the reader closed, meanwhile
   if (!book || !file) { toast(Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
-  closeReader(true);
+  closeReader(true, true);
   show('reader');
   const bookEl = $('#book'); bookEl.replaceChildren(h('div', { class: 'loading' }, 'Ouverture du livre…'));
   $('#r-title').textContent = book.title; $('#r-chap').textContent = '';
@@ -1968,20 +2047,24 @@ async function openBook(id) {
   try { data = await parseFor(book, file); }
   catch (e) { console.error(e); if (my === openSeq) bookEl.replaceChildren(h('div', { class: 'loading' }, `Lecture impossible : ${e.message}`)); return; }
   if (my !== openSeq) { data.urls.forEach(u => URL.revokeObjectURL(u)); return; } // another book was opened meanwhile
+  if (!data.sections.length) { bookEl.replaceChildren(h('div', { class: 'loading' }, 'Ce livre ne contient aucun texte lisible.')); return; }
   Goal.reset(); Track.reset(); R.data = data; R.book = book;
   if (book.status === 'toread') { book.status = 'reading'; if (!book.startDate) book.startDate = today(); }
   book.lastRead = Date.now(); DB.put('books', book);
-  const vocab = await DB.byBook(id); R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
+  const vocab = await DB.byBook(id); if (my !== openSeq) return; R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
   bookEl.replaceChildren(...R.data.sections.map(s => s.el), h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
   ensureDict();
   try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
+  if (my !== openSeq) return;
   addPrepButtons();
   cvRefresh();
   restorePos();
   if (settings.pinyin) startPinyin();
   if (settings.vocabHl) VH.start();
 }
-function closeReader(silent) {
+function closeReader(silent, opening) {
+  if (!opening) openSeq++; // a book still loading must not reopen the reader
+  cancelAnimationFrame(scrollRAF); clearTimeout(R.saveTimer);
   $('#book').classList.remove('cv');
   VH.stop(); Goal.reset(); $('#r-pct').hidden = true;
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
@@ -1989,7 +2072,8 @@ function closeReader(silent) {
   endPeek(); R.pending = null; ttsStop(true);
   hidePop();
   if (R.data) R.data.urls.forEach(u => URL.revokeObjectURL(u));
-  R.book = null; R.data = null;
+  R.book = null; R.data = null; TTS.blocks = null;
+  $('#book').replaceChildren(); // free the closed book's DOM
   if (!silent) { show('lib'); renderLibrary(); }
 }
 function restorePos() {
@@ -2313,8 +2397,10 @@ function onScroll() {
 }
 function savePos() {
   if (!R.book || !R.pending || R.peek) return;
-  R.book.pos = { s: R.pending.s, r: R.pending.r, c: R.pending.c }; R.book.progress = R.pending.prog; R.book.lastRead = Date.now(); R.book.posAt = Date.now();
-  DB.put('books', R.book, { touch: false }).catch(() => {}); window.Sync && Sync.dirty();
+  const f = { pos: { s: R.pending.s, r: R.pending.r, c: R.pending.c }, progress: R.pending.prog, lastRead: Date.now(), posAt: Date.now() };
+  Object.assign(R.book, f);
+  // only the position fields: the book's sheet (rating, status, notes…) may have been edited while reading
+  DB.patch('books', R.book.id, f).catch(() => {}); window.Sync && Sync.dirty();
 }
 /* ================= reading goal: the text split into N equal portions ================= */
 const blockLen = el => { let n = textLen(el); for (const rt of el.querySelectorAll('rt,rp')) n -= textLen(rt); return n; };
@@ -3196,7 +3282,7 @@ function blockSentences(bl) {
   }
   if (a < str.length) out.push([a, str.length]);
   // very long sentences are cut at commas: some engines stop after ~15 seconds of speech
-  const cut = []; for (const [x, y] of out) { let st = x; while (y - st > 120) { let c = -1; for (let k = st + 60; k < Math.min(y, st + 120); k++) if ('，,、：:'.includes(str[k])) c = k + 1; if (c < 0) c = st + 120; cut.push([st, c]); st = c; } cut.push([st, y]); }
+  const cut = []; for (const [x, y] of out) { let st = x; while (y - st > 60) { let c = -1; for (let k = st + 25; k < Math.min(y, st + 60); k++) if ('，,、：:'.includes(str[k])) c = k + 1; if (c < 0) c = st + 60; cut.push([st, c]); st = c; } cut.push([st, y]); }
   out.length = 0; out.push(...cut);
   return out.filter(([x, y]) => /[㐀-鿿\w]/.test(str.slice(x, y))).map(([x, y]) => ({ text: str.slice(x, y), a: pos[x], b: pos[y - 1] }));
 }
@@ -3223,7 +3309,15 @@ function ttsSpeak() {
   TTS.voice = TTS.voice || pickVoice();
   if (TTS.voice) { u.voice = TTS.voice; u.lang = TTS.voice.lang; } else u.lang = 'zh-CN';
   u.rate = settings.ttsRate;
-  u.onend = () => { if (tok !== TTS.token || !TTS.playing) return; TTS.si++; ttsSpeak(); };
+  u.onend = () => { if (tok !== TTS.token || !TTS.playing) return; clearTimeout(TTS.wd); TTS.si++; ttsSpeak(); };
+  TTS.u = u; // keep it alive: Chrome may drop an utterance it alone holds, and then never fires onend
+  // watchdog: some Android engines silently drop an utterance or never call onend
+  clearTimeout(TTS.wd);
+  TTS.wd = setTimeout(function check() {
+    if (tok !== TTS.token || !TTS.playing) return;
+    if (speechSynthesis.speaking) { TTS.wd = setTimeout(check, 1500); return; }
+    TTS.si++; ttsSpeak();
+  }, 3000 + s.text.length * 450 / (settings.ttsRate || 1));
   u.onerror = e => { if (tok !== TTS.token || e.error === 'interrupted' || e.error === 'canceled') return; ttsPause(); ttsMsg('La lecture audio s\'est arrêtée (' + e.error + ').'); };
   try {
     const r = document.createRange(); r.setStart(s.a[0], s.a[1]); r.setEnd(s.b[0], s.b[1] + 1);
@@ -3233,12 +3327,14 @@ function ttsSpeak() {
   } catch {}
   speechSynthesis.speak(u);
 }
+// right after cancel(), Android engines sometimes drop the next utterance: leave them a moment
+function ttsSpeakSoon() { const t0 = TTS.token; setTimeout(() => { if (TTS.playing && TTS.token === t0) ttsSpeak(); }, 80); }
 async function ttsPlay() {
   if (!ttsOK()) return;
   if (!zhVoices().length) await new Promise(r => { const done = () => { speechSynthesis.removeEventListener && speechSynthesis.removeEventListener('voiceschanged', done); r(); }; speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', done); setTimeout(done, 1200); });
   if (!zhVoices().length) { ttsMsg('Aucune voix chinoise n\'est installée sur cet appareil. Sur Android, installe « Synthèse vocale Google » avec le chinois ; sur Windows, ajoute le chinois dans Paramètres › Heure et langue › Voix ; sur iPhone, Réglages › Accessibilité › Contenu énoncé › Voix.'); return; }
   if (!TTS.sents && TTS.bi === 0 || TTS.fromView) { TTS.bi = ttsStartIndex(); TTS.sents = null; TTS.fromView = false; }
-  TTS.playing = true; speechSynthesis.cancel(); ttsSpeak(); drawTts();
+  TTS.playing = true; speechSynthesis.cancel(); ttsSpeakSoon(); drawTts();
   try { navigator.wakeLock && navigator.wakeLock.request('screen').then(l => { TTS.lock = l; }).catch(() => {}); } catch {}
 }
 function ttsPause() {
@@ -3251,7 +3347,7 @@ function ttsStep(dir) {
   TTS.si += dir;
   while (TTS.si < 0 && TTS.bi > 0) { TTS.bi--; TTS.sents = blockSentences(ttsBlocks()[TTS.bi]); TTS.si = TTS.sents.length - 1; }
   if (TTS.si < 0) TTS.si = 0;
-  if (was) ttsSpeak(); else { const s = ttsCurrent(); if (s) { const r = document.createRange(); r.setStart(s.a[0], s.a[1]); r.setEnd(s.b[0], s.b[1] + 1); try { CSS.highlights.set('tts', new Highlight(r)); } catch {} } }
+  if (was) { TTS.playing = true; ttsSpeakSoon(); } else { const s = ttsCurrent(); if (s) { const r = document.createRange(); r.setStart(s.a[0], s.a[1]); r.setEnd(s.b[0], s.b[1] + 1); try { CSS.highlights.set('tts', new Highlight(r)); } catch {} } }
 }
 function ttsStop(silent) {
   if (!TTS.on && silent) return;
@@ -3291,9 +3387,10 @@ function buildTextIndex(d) {
   d.sections.forEach((sec, k) => { const label = chapterIn(d, k).label; for (const bl of leafBlocks(sec.el)) { const t = plainText(bl); if (t) blocks.push([k, label, t]); } });
   return (d._tix = { v: 2, blocks });
 }
-async function bookTextIndex(id) {
-  if (R.book && R.book.id === id && R.data) return buildTextIndex(R.data);
+async function bookTextIndex(id, cachedOnly) {
+  if (R.book && R.book.id === id && R.data) return R.data.tix || (R.data.tix = buildTextIndex(R.data));
   const c = await DB.get('kv', 'text:' + id); if (c && c.v === 2) return c;
+  if (cachedOnly) return null; // examples from other books: never parse a whole book on the spot
   const d = await parseBook(id); const tix = buildTextIndex(d); d.urls.forEach(u => URL.revokeObjectURL(u));
   DB.put('kv', { k: 'text:' + id, v: 2, blocks: tix.blocks }).catch(() => {});
   return tix;
@@ -3306,7 +3403,7 @@ async function findExamples(forms, exclude, curId, per = 3) {
   for (const b of books) {
     const target = b.id === curId ? same : other;
     if (target.length >= per * 4) continue;
-    let tix; try { tix = await bookTextIndex(b.id); } catch { continue; }
+    let tix; try { tix = await bookTextIndex(b.id, b.id !== curId); } catch { continue; } if (!tix) continue;
     for (const [k, label, t] of tix.blocks) {
       for (const f of fs) {
         let i = t.indexOf(f);
@@ -3363,7 +3460,8 @@ async function searchBooks(q, ids) {
   for (const id of ids) {
     const b = await DB.get('books', id); if (!b) continue;
     let tix; try { tix = await bookTextIndex(id); } catch { continue; }
-    let norm = NormCache.get(id); if (!norm || norm.length !== tix.blocks.length) { norm = tix.blocks.map(x => normAll(x[2])); NormCache.set(id, norm); }
+    let norm = NormCache.get(id); if (!norm || norm.length !== tix.blocks.length) { norm = tix.blocks.map(x => normAll(x[2])); if (NormCache.size >= 6) NormCache.delete(NormCache.keys().next().value); }
+    NormCache.delete(id); NormCache.set(id, norm); // most recently used last; a handful of books kept
     for (let j = 0; j < norm.length; j++) {
       let i = norm[j].indexOf(nq);
       while (i >= 0) {
@@ -3394,6 +3492,8 @@ async function showVocab(opts = {}) {
   show('voc'); window.scrollTo(0, 0);
   await renderVocab();
 }
+// typing with a pinyin keyboard: wait for the composed characters, keep spaces as typed
+function vocabSearch(val) { V.q = val; clearTimeout(V.t); V.t = setTimeout(() => renderVocab().then(() => { const s = $('#v-q'); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }), 300); }
 async function renderVocab() {
   const [books, all] = await Promise.all([DB.all('books'), DB.all('vocab')]);
   const bmap = new Map(books.map(b => [b.id, b]));
@@ -3402,7 +3502,8 @@ async function renderVocab() {
   const chapters = [...new Set(list.sort((a, b) => (a.section - b.section) || (a.addedAt - b.addedAt)).map(v => v.chapter))];
   if (V.chapter && !chapters.includes(V.chapter)) V.chapter = '';
   if (V.chapter) list = list.filter(v => v.chapter === V.chapter);
-  if (V.q) { const q = V.q.toLowerCase(); list = list.filter(v => v.word.includes(V.q) || v.simp.includes(V.q) || v.trad.includes(V.q) || pinyinText(v.pinyin).toLowerCase().includes(q) || v.pinyin.toLowerCase().includes(q) || sensesText(v, 3).toLowerCase().includes(q)); }
+  const vq = (V.q || '').trim();
+  if (vq) { const q = vq.toLowerCase(); list = list.filter(v => v.word.includes(vq) || v.simp.includes(vq) || v.trad.includes(vq) || pinyinText(v.pinyin).toLowerCase().includes(q) || v.pinyin.toLowerCase().includes(q) || sensesText(v, 3).toLowerCase().includes(q)); }
   const due = list.filter(v => (v.due || 0) <= Date.now());
   const root = $('#voc'); root.replaceChildren();
   const back = V.from === 'reader' && R.book
@@ -3415,7 +3516,7 @@ async function renderVocab() {
     h('option', { value: '' }, 'Tous les livres'), books.filter(b => all.some(v => v.bookId === b.id)).map(b => h('option', { value: b.id, selected: b.id === V.bookId }, b.title)));
   const chapSel = h('select', { id: 'v-chap', disabled: !V.bookId, onchange: e => { V.chapter = e.target.value; renderVocab(); } },
     h('option', { value: '' }, V.bookId ? 'Tous les chapitres' : 'Choisis un livre d\'abord'), chapters.map(c => h('option', { value: c, selected: c === V.chapter }, c)));
-  const search = h('input', { type: 'search', id: 'v-q', placeholder: 'Chercher (caractères, pinyin, sens)', value: V.q, oninput: e => { V.q = e.target.value.trim(); clearTimeout(V.t); V.t = setTimeout(() => renderVocab().then(() => { const s = $('#v-q'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }), 250); } });
+  const search = h('input', { type: 'search', id: 'v-q', placeholder: 'Chercher (caractères, pinyin, sens)', value: V.q, oninput: e => { if (!e.isComposing) vocabSearch(e.target.value); }, oncompositionend: e => vocabSearch(e.target.value) });
   root.append(h('div', { class: 'vfilters' }, bookSel, chapSel, search));
   root.append(h('div', { class: 'vhead' },
     h('h1', null, `${list.length} mot${list.length > 1 ? 's' : ''}`),
@@ -3477,16 +3578,20 @@ function exportList(list, kind) {
     text = words.join('\n');
     note = `${words.length} mots, un par ligne. Sur skritter.com/vocablists : « Create New List », puis colle les mots dans une section (200 mots maximum par section).`;
   } else {
-    text = list.map(v => [v.word, pinyinText(v.pinyin), sensesText(v, 3), v.sentence || '', `${(v.chapter || '')}`].map(x => String(x).replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+    text = list.map(v => [v.word, pinyinText(v.pinyin), sensesText(v, 3), v.sentence || '', `${(v.chapter || '')}`].map(x => String(x).replace(/[\t\r\n]+/g, ' ').replace(/^"/, '“')).join('\t')).join('\n');
     note = 'Colonnes séparées par des tabulations : mot, pinyin, sens, phrase, chapitre. Dans Anki : Fichier › Importer, puis choisis « Tabulation » comme séparateur.';
   }
   const ta = h('textarea', { class: 'copybox', readonly: true, id: 'copy-box' }, text);
   const status = h('span', { class: 'muted', style: 'font-size:13px' });
-  const btn = h('button', { class: 'btn primary', onclick: async () => {
-    try { await navigator.clipboard.writeText(text); status.textContent = 'Copié dans le presse-papiers.'; }
+  const copy = (t, label) => h('button', { class: 'btn primary', onclick: async () => {
+    try { await navigator.clipboard.writeText(t); status.textContent = `Copié${label ? ' (' + label + ')' : ''} dans le presse-papiers.`; }
     catch { ta.focus(); ta.select(); status.textContent = 'Texte sélectionné : copie-le avec Ctrl+C (ou Copier sur téléphone).'; }
-  } }, 'Copier');
-  modal(kind === 'skritter' ? 'Export pour Skritter' : 'Export pour Anki', h('div', { class: 'pb' }, h('p', { class: 'muted', style: 'margin:0;font-size:13.5px' }, note), ta, h('div', { class: 'confirm-row' }, btn, status)));
+  } }, label ? 'Copier ' + label : 'Copier');
+  // Skritter takes 200 words per section: one button per section
+  const lines = text.split('\n'), parts = [];
+  if (kind === 'skritter' && lines.length > 200) for (let i = 0; i < lines.length; i += 200) parts.push(copy(lines.slice(i, i + 200).join('\n'), `${i + 1}–${Math.min(i + 200, lines.length)}`));
+  else parts.push(copy(text));
+  modal(kind === 'skritter' ? 'Export pour Skritter' : 'Export pour Anki', h('div', { class: 'pb' }, h('p', { class: 'muted', style: 'margin:0;font-size:13.5px' }, note), ta, h('div', { class: 'confirm-row', style: 'flex-wrap:wrap' }, ...parts, status)));
 }
 
 /* ================= review ================= */
@@ -3521,7 +3626,8 @@ function startReview(words) {
   async function grade(ok) {
     if (grading || i >= queue.length) return; grading = true;
     const v = queue[i];
-    if (ok) { v.box = Math.min((v.box || 0) + 1, 5); v.due = Date.now() + INTERVALS[v.box] * 864e5; known++; }
+    // a word reviewed before it was due keeps its box: "réviser tout" must not push a word to 35 days in one afternoon
+    if (ok) { if ((v.due || 0) <= Date.now()) { v.box = Math.min((v.box || 0) + 1, 5); v.due = Date.now() + INTERVALS[v.box] * 864e5; } known++; }
     else { v.box = 0; v.due = Date.now() + 10 * 60e3; }
     v.reviews = (v.reviews || 0) + 1; await DB.put('vocab', v);
     i++; shown = false; grading = false; draw();
@@ -3598,8 +3704,8 @@ const Sync = {
   },
   async download(id) { return this.g(`${DRIVE}/${id}?alt=media`); },
   mime: f => ({ epub: 'application/epub+zip', pdf: 'application/pdf', txt: 'text/plain', html: 'text/html', fb2: 'application/octet-stream', mobi: 'application/x-mobipocket-ebook', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })[f] || 'application/octet-stream',
-  async fetchBookFile(book) {
-    const files = await this.list(); const f = files.find(x => x.name === `book-${book.id}.${book.format}`);
+  async fetchBookFile(book, files) {
+    files = files || await this.list(); const f = files.find(x => x.name === `book-${book.id}.${book.format}`);
     if (!f) return null;
     const blob = await (await this.download(f.id)).blob();
     const rec = { id: book.id, blob: new Blob([blob], { type: this.mime(book.format) }) };
@@ -3619,7 +3725,7 @@ const Sync = {
     return out;
   },
   async run(interactive) {
-    if (this.busy) return; this.busy = true; clearTimeout(this.timer);
+    if (this.busy) { this.again = true; return; } this.busy = true; this.again = false; clearTimeout(this.timer);
     try {
       if (!this.token()) { if (!interactive) { this.setStatus('Reconnexion nécessaire'); return; } await this.login(); }
       this.setStatus('Synchronisation…');
@@ -3651,19 +3757,25 @@ const Sync = {
         }
       }
       for (const [id, v] of Object.entries(vocab)) { const loc = lvm[id]; if (!loc || JSON.stringify(loc) !== JSON.stringify(v)) { await DB.put('vocab', v, { touch: false }); changed = true; } }
-      // covers and book files
-      const localFiles = new Set(await DB.keys('files'));
+      // deletions made on this device while the sync ran must survive it
+      const tk2 = await DB.get('kv', 'tomb'); for (const [k, v] of Object.entries((tk2 && tk2.map) || {})) tomb[k] = Math.max(tomb[k] || 0, v);
+      // the state (library, positions, vocabulary) goes first: a large book that fails to upload must not hold it back
+      const body = JSON.stringify({ v: 1, books, vocab, tomb });
+      if (!sf || body !== JSON.stringify({ v: 1, books: remote.books || {}, vocab: remote.vocab || {}, tomb: remote.tomb || {} }))
+        await this.upload('shujia-state.json', new Blob([JSON.stringify({ v: 1, at: Date.now(), books, vocab, tomb })], { type: 'application/json' }), 'application/json', sf && sf.id);
+      await DB.put('kv', { k: 'tomb', map: tomb });
+      // covers and book files, each on its own
+      const localFiles = new Set(await DB.keys('files')); let failed = 0;
       for (const b of Object.values(books)) {
-        const loc = await DB.get('books', b.id); const cn = `cover-${b.id}.jpg`;
-        if (loc.cover && !byName.has(cn)) await this.upload(cn, loc.cover, 'image/jpeg');
-        else if (!loc.cover && byName.has(cn)) { loc.cover = await (await this.download(byName.get(cn).id)).blob(); await DB.put('books', loc, { touch: false }); const old = coverURLs.get(b.id); if (old) { URL.revokeObjectURL(old); coverURLs.delete(b.id); } changed = true; }
-        const fn = `book-${b.id}.${b.format}`;
-        if (localFiles.has(b.id) && !byName.has(fn)) { this.setStatus(`Envoi de « ${b.title} »…`); const f = await DB.get('files', b.id); await this.upload(fn, f.blob, this.mime(b.format)); }
+        try {
+          const loc = await DB.get('books', b.id); if (!loc) continue; const cn = `cover-${b.id}.jpg`;
+          if (loc.cover && !byName.has(cn)) await this.upload(cn, loc.cover, 'image/jpeg');
+          else if (!loc.cover && byName.has(cn)) { const cover = await (await this.download(byName.get(cn).id)).blob(); await DB.patch('books', b.id, { cover }); const old = coverURLs.get(b.id); if (old) { URL.revokeObjectURL(old); coverURLs.delete(b.id); } changed = true; }
+          const fn = `book-${b.id}.${b.format}`;
+          if (localFiles.has(b.id) && !byName.has(fn)) { this.setStatus(`Envoi de « ${b.title} »…`); const f = await DB.get('files', b.id); if (f) await this.upload(fn, f.blob, this.mime(b.format)); }
+        } catch (e) { console.warn('sync file', b.id, e); failed++; if (/reconnexion/.test(e.message)) throw e; }
       }
       for (const id of Object.keys(tomb)) for (const nm of ['epub', 'txt', 'pdf', 'mobi', 'fb2', 'docx', 'html'].map(f => `book-${id}.${f}`).concat(`cover-${id}.jpg`)) if (byName.has(nm)) await this.g(`${DRIVE}/${byName.get(nm).id}`, { method: 'DELETE' }).catch(() => {});
-      const state = JSON.stringify({ v: 1, at: Date.now(), books, vocab, tomb });
-      await this.upload('shujia-state.json', new Blob([state], { type: 'application/json' }), 'application/json', sf && sf.id);
-      await DB.put('kv', { k: 'tomb', map: tomb });
       // thematic vocabulary: its own private file, newest version of each reference book wins
       if (THEMES_ON) {
         const tf = byName.get('shujia-themes.json');
@@ -3686,22 +3798,25 @@ const Sync = {
         for (const id of Object.keys(tt)) for (const [n2, x] of byName) if (n2.startsWith(`themesrc-${id}-`)) await this.g(`${DRIVE}/${x.id}`, { method: 'DELETE' }).catch(() => {});
       }
       LS.set('lastSync', Date.now());
-      this.setStatus('Synchronisé ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+      this.setStatus((failed ? `Synchronisé, sauf ${failed} fichier${failed > 1 ? 's' : ''} · ` : 'Synchronisé ') + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       if (changed && !$('#lib').hidden) renderLibrary();
       if (changed && !$('#voc').hidden) renderVocab();
       if (R.book) { R.saved = new Set((await DB.byBook(R.book.id)).map(v => v.simp)); updateVocabCount(); }
     } catch (e) { console.error(e); this.setStatus('Erreur de synchro'); if (interactive) toast('Synchronisation impossible : ' + e.message); }
-    finally { this.busy = false; }
+    finally { this.busy = false; if (this.again) { this.again = false; this.dirty(); } } // changes made during the run go in the next one
   }
 };
 window.Sync = Sync;
 async function keepAllOffline(st) {
   if (!Sync.connected()) { try { await Sync.login(); } catch { return; } }
   const [books, local] = await Promise.all([DB.all('books'), DB.keys('files')]); const have = new Set(local);
-  const todo = books.filter(b => !have.has(b.id) && !b.sample); let n = 0;
-  for (const b of todo) { st.textContent = `Téléchargement ${++n}/${todo.length} : ${b.title}…`; try { await Sync.fetchBookFile(b); } catch (e) { console.error(e); } }
+  const todo = books.filter(b => !have.has(b.id) && !b.sample); let n = 0, ok = 0, files = null;
+  try { files = await Sync.list(); } catch (e) { console.error(e); }
+  for (const b of todo) { st.textContent = `Téléchargement ${++n}/${todo.length} : ${b.title}…`; try { if (await Sync.fetchBookFile(b, files)) ok++; } catch (e) { console.error(e); } }
   try { navigator.storage && navigator.storage.persist && await navigator.storage.persist(); } catch {}
-  st.textContent = todo.length ? `${todo.length} livre${todo.length > 1 ? 's' : ''} téléchargé${todo.length > 1 ? 's' : ''} : tout est sur cet appareil.` : 'Tous tes livres sont déjà sur cet appareil.';
+  st.textContent = !todo.length ? 'Tous tes livres sont déjà sur cet appareil.'
+    : ok === todo.length ? `${ok} livre${ok > 1 ? 's' : ''} téléchargé${ok > 1 ? 's' : ''} : tout est sur cet appareil.`
+    : `${ok} livre${ok > 1 ? 's' : ''} sur ${todo.length} téléchargé${ok > 1 ? 's' : ''}. Réessaie pour les autres (reconnexion à Google peut-être nécessaire).`;
   renderLibrary();
 }
 function showSyncPanel() {
@@ -3729,6 +3844,33 @@ function showSyncPanel() {
   if (Sync.gisOK === false || location.protocol !== 'https:' && location.hostname !== 'localhost') st.textContent = 'La synchronisation ne fonctionne que sur la version en ligne de l\'appli (GitHub Pages).';
 }
 $('#sync-btn').addEventListener('click', () => { if (Sync.enabled() && !Sync.token() && Sync.clientId()) Sync.run(true); else showSyncPanel(); });
+
+/* ================= Android back button ================= */
+// while anything sits above the library (reader, vocabulary, a sheet, the pop-up), one extra history entry
+// makes the phone's back gesture close it instead of leaving the app
+const Back = {
+  guard: false, skip: false, t: 0,
+  open() { return !!topLayer() || (!$('#pop').hidden && (isTouch() || P.pinned)) || !$('#notepop').hidden || !$('#reader').hidden || !$('#voc').hidden || !$('#thm').hidden; },
+  sync() {
+    const open = this.open();
+    if (open && !this.guard) { try { history.pushState({ shujia: 1 }, ''); this.guard = true; } catch {} }
+    else if (!open && this.guard) { this.guard = false; this.skip = true; history.back(); }
+  },
+  soon() { clearTimeout(this.t); this.t = setTimeout(() => this.sync(), 60); }
+};
+addEventListener('popstate', () => {
+  if (Back.skip) { Back.skip = false; return; }
+  Back.guard = false;
+  const t = topLayer();
+  if (t && t.close) t.close();
+  else if (!$('#notepop').hidden) $('#notepop').hidden = true;
+  else if (!$('#pop').hidden) hidePop();
+  else if (!$('#voc').hidden || !$('#thm').hidden) { if (V.from === 'reader' && R.book) { show('reader'); restorePos(); } else { show('lib'); renderLibrary(); } }
+  else if (!$('#reader').hidden) closeReader(false);
+  Back.soon();
+});
+new MutationObserver(() => Back.soon()).observe(document.body, { childList: true });
+for (const id of ['reader', 'voc', 'thm', 'pop', 'notepop']) new MutationObserver(() => Back.soon()).observe($('#' + id), { attributes: true, attributeFilter: ['hidden'] });
 
 /* ================= navigation & boot ================= */
 function show(view) {
@@ -3822,7 +3964,7 @@ const SAMPLE = `第一章 雨天
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
   try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(reg => { const up = () => reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') up(); }); setInterval(up, 30 * 60 * 1000); }).catch(() => {});
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book || topLayer() || Sync.busy || importing) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
 })();
 </script>
 
