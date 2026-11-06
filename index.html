@@ -612,6 +612,8 @@ const DB = (() => {
 })();
 
 /* ================= dictionary ================= */
+// give the browser a moment to paint and handle taps during long loops
+const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
 const DICT_VERSION = '2026-09-26';
 const Dict = {
   ready: false, lines: null, index: null, maxLen: 0, loading: null,
@@ -629,6 +631,7 @@ const Dict = {
       const lines = text.split('\n'), index = new Map(); let maxLen = 0;
       const add = (k, i) => { const e = index.get(k); if (e === undefined) index.set(k, i); else if (typeof e === 'number') index.set(k, [e, i]); else e.push(i); if (k.length > maxLen) maxLen = k.length; };
       for (let i = 0; i < lines.length; i++) {
+        if (i && !(i & 8191)) await breathe(); // keep the page responsive on phones while the index is built
         const L = lines[i]; if (!L || L.charCodeAt(0) === 35) continue;
         const a = L.indexOf('\t'), b = L.indexOf('\t', a + 1);
         const t = L.slice(0, a), s = L.slice(a + 1, b);
@@ -666,8 +669,10 @@ const Words = {
       try { const c = await DB.get('kv', 'words'); if (c && c.v === 1) text = c.text; } catch {}
       if (!text) { const res = await fetch('data/words.txt'); if (!res.ok) throw new Error('HTTP ' + res.status); text = await res.text(); DB.put('kv', { k: 'words', v: 1, text }).catch(() => {}); }
       const map = new Map(), idioms = new Set(); let total = 0;
-      for (const L of text.split('\n')) {
-        if (!L || L.charCodeAt(0) === 35) continue;
+      const lines = text.split('\n'); text = null;
+      for (let i = 0; i < lines.length; i++) {
+        if (i && !(i & 16383)) await breathe();
+        const L = lines[i]; if (!L || L.charCodeAt(0) === 35) continue;
         const a = L.indexOf(' '), b = L.indexOf(' ', a + 1);
         const w = L.slice(0, a), f = +(b < 0 ? L.slice(a + 1) : L.slice(a + 1, b));
         map.set(w, f); total += f; if (b > 0) idioms.add(w);
@@ -2043,6 +2048,8 @@ for (const [obj, fn] of [[window, 'scrollTo'], [Element.prototype, 'scrollIntoVi
   const orig = obj[fn]; obj[fn] = function (...a) { Track.jumpAt = performance.now(); return orig.apply(this, a); };
 }
 /* ================= thematic vocabulary (the user's own reference book, imported from OCR text; private: device + Drive) ================= */
+// paused: no tab, no Drive sync. Data already on the device or in Drive is left untouched; set to true to bring the module back.
+const THEMES_ON = false;
 const Themes = {
   async get() { const r = await DB.get('kv', 'themes'); return r && r.refs ? r : { k: 'themes', refs: {}, tomb: {} }; },
   async put(st) { await DB.put('kv', st); window.Sync && Sync.dirty(); }
@@ -3658,7 +3665,7 @@ const Sync = {
       await this.upload('shujia-state.json', new Blob([state], { type: 'application/json' }), 'application/json', sf && sf.id);
       await DB.put('kv', { k: 'tomb', map: tomb });
       // thematic vocabulary: its own private file, newest version of each reference book wins
-      {
+      if (THEMES_ON) {
         const tf = byName.get('shujia-themes.json');
         const rt = tf ? await (await this.download(tf.id)).json() : { refs: {}, tomb: {} };
         const lt = await Themes.get(), tt = Object.assign({}, rt.tomb || {});
@@ -3731,7 +3738,8 @@ function show(view) {
 }
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
 $('#nav-log').addEventListener('click', () => showJournal());
-$('#nav-thm').addEventListener('click', () => showThemes());
+$('#nav-thm').hidden = !THEMES_ON;
+if (THEMES_ON) $('#nav-thm').addEventListener('click', () => showThemes());
 $$('#theme-seg button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.v)));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme());
 $('#nav-lib').addEventListener('click', () => { show('lib'); renderLibrary(); });
