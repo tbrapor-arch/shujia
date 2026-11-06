@@ -2635,13 +2635,13 @@ function sentenceFor(hit, len) {
   const tw = textWalker(hit.block); let full = '', abs = -1, n;
   while ((n = tw.nextNode())) { if (n === hit.pos[0][0]) abs = full.length + hit.pos[0][1]; full += n.data; }
   if (abs < 0) return '';
-  const END = '。！？!?；;…\n', CLOSE = '”」』’）)》';
+  const END = '。！？!?；;…', CLOSE = '”」』’）)》';
   let a = abs; while (a > 0 && !END.includes(full[a - 1])) a--;
   while (a < abs && CLOSE.includes(full[a])) a++;
   let b = abs + len; while (b < full.length && !END.includes(full[b])) b++;
   while (b < full.length && (END.includes(full[b]) || CLOSE.includes(full[b]))) b++;
   let s = full.slice(a, b).replace(/\s+/g, '').trim();
-  if (s.length > 140) { const i = abs - a; s = (i > 60 ? '…' : '') + s.slice(Math.max(0, i - 60), i + len + 60) + (i + len + 60 < s.length ? '…' : ''); }
+  if (s.length > 140) { const i = full.slice(a, abs).replace(/\s+/g, '').length; s = (i > 60 ? '…' : '') + s.slice(Math.max(0, i - 60), i + len + 60) + (i + len + 60 < s.length ? '…' : ''); }
   return s;
 }
 // whole sentence around a text position, as a DOM range (same boundaries as sentenceFor)
@@ -2650,7 +2650,7 @@ function sentenceRange(node, off) {
   const tw = textWalker(block); const map = []; let full = '', abs = -1, n;
   while ((n = tw.nextNode())) { if (n === node) abs = full.length + Math.min(off, n.data.length - 1); for (let i = 0; i < n.data.length; i++) map.push([n, i]); full += n.data; }
   if (abs < 0 || !full) return null;
-  const END = '。！？!?；;…\n', CLOSE = '”」』’）)》';
+  const END = '。！？!?；;…', CLOSE = '”」』’）)》';
   let a = abs; while (a > 0 && !END.includes(full[a - 1])) a--;
   while (a < abs && (CLOSE.includes(full[a]) || /\s/.test(full[a]))) a++;
   let b = abs + 1; while (b < full.length && !END.includes(full[b])) b++;
@@ -2682,8 +2682,10 @@ function hidePop() {
   P.hit = null; P.pinned = false; P.showEx = false; $('#pop').hidden = true;
   try { CSS.highlights && CSS.highlights.delete('zh'); } catch {}
 }
+const popStale = () => P.hit && !P.hit.start.node.isConnected; // the text under the pop-up was re-rendered (pinyin on/off)
 function renderPop() {
   if (!P.hit || !P.results) return;
+  if (popStale()) return hidePop();
   const pop = $('#pop'); const r = P.results[P.sel]; const main = r.entries[0];
   const rng = hitRange(r.word.length);
   try { if (rng && window.Highlight && CSS.highlights) CSS.highlights.set('zh', new Highlight(rng)); } catch {}
@@ -2729,10 +2731,18 @@ function renderPop() {
     if (top + hgt > innerHeight - 8) top = rect.top - hgt - 8;
     if (top < 8) top = Math.max(8, innerHeight - hgt - 8);
     pop.style.left = left + 'px'; pop.style.top = top + 'px';
-  } else { pop.style.left = ''; pop.style.top = ''; }
+  } else {
+    pop.style.left = ''; pop.style.top = '';
+    // the sheet covers the bottom of the screen: bring the tapped word above it
+    if (rng && P.pinned) { const b = rng.getBoundingClientRect(), lim = innerHeight - pop.offsetHeight - 12; if (b.bottom > lim) scrollBy({ top: b.bottom - lim + 24, behavior: 'smooth' }); }
+  }
 }
 async function toggleSave() {
-  if (!P.hit || !R.book) return;
+  if (!P.hit || !R.book || P.saving) return; // a double tap must not save the word twice
+  if (popStale()) return hidePop();
+  P.saving = true; try { await toggleSave0(); } finally { P.saving = false; }
+}
+async function toggleSave0() {
   const r = P.results[P.sel]; const e = r.entries[0];
   if (R.saved.has(e.simp)) {
     const v = (await DB.byBook(R.book.id)).find(x => x.simp === e.simp);
@@ -2749,7 +2759,7 @@ async function toggleSave() {
 }
 async function updateVocabCount() { if (R.book) $('#r-vn').textContent = (await DB.byBook(R.book.id)).length; VH.refresh(); }
 function shiftHit(dir) {
-  if (!P.hit) return;
+  if (!P.hit) return; if (popStale()) return hidePop();
   let start;
   if (dir > 0) { const p = P.hit.pos[1]; if (!p) return; start = { node: p[0], off: p[1] }; }
   else { start = prevPosition(P.hit.start.node, P.hit.start.off, P.hit.block); if (!start) return; while (start && /\s/.test(start.node.data[start.off])) start = prevPosition(start.node, start.off, P.hit.block); if (!start) return; }
@@ -2767,9 +2777,10 @@ $('#pop').addEventListener('click', e => {
   else if (act === 'say') sayWord();
   else if (act === 'sent') { const st = P.hit.start; hidePop(); selectSentence(st.node, st.off); }
 });
+// copy first: once the new tab has the focus, the browser refuses to write to the clipboard
 function openClaude(q) {
-  window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
-  try { navigator.clipboard.writeText(q).then(() => toast('Question copiée — colle-la dans Claude si elle n’apparaît pas.'), () => {}); } catch {}
+  const go = () => window.open('https://claude.ai/new?q=' + encodeURIComponent(q), '_blank', 'noopener');
+  try { navigator.clipboard.writeText(q).then(() => { toast('Question copiée — colle-la dans Claude si elle n’apparaît pas.'); go(); }, go); } catch { go(); }
 }
 function bookSrc() { const b = R.book || {}; return b.title ? `\n(Extrait de 《${b.title}》${b.author ? ', ' + b.author : ''}.)` : ''; }
 // pronounce the word in the pop-up with the same voice as 听 (the book's script picks zh-TW / zh-CN)
@@ -2896,7 +2907,7 @@ function showNote(a, target, k) {
 }
 document.addEventListener('mouseout', e => { if (!e.relatedTarget && P.hit && !P.pinned && !isTouch()) hidePop(); });
 document.addEventListener('keydown', e => {
-  if ($('#reader').hidden || e.target.closest('input,textarea,select') || e.metaKey || e.ctrlKey || e.altKey || topLayer()) return;
+  if ($('#reader').hidden || e.repeat || e.target.closest('input,textarea,select') || e.metaKey || e.ctrlKey || e.altKey || topLayer()) return;
   if (e.key === 'Escape' && P.hit) hidePop();
   else if (e.key === 'Escape' && !$('#notepop').hidden) $('#notepop').hidden = true;
   else if ((e.key === 'a' || e.key === 'A') && P.hit) { e.preventDefault(); toggleSave(); }
@@ -3083,15 +3094,16 @@ function keepPlace(fn) {
 function startPinyin() {
   if (!R.data || !settings.pinyin) return;
   if (!Dict.ready) { ensureDict(); Dict.load().then(startPinyin).catch(() => {}); return; }
-  if (!Words.ready) { Words.load().then(() => { if (settings.pinyin && R.data) { R.data.sections.forEach(s => unannotate(s.el)); startPinyin(); } }).catch(() => {}); }
+  if (!Words.ready) { Words.load().then(() => { if (settings.pinyin && R.data) { hidePop(); keepPlace(() => R.data.sections.forEach(s => unannotate(s.el))); startPinyin(); } }).catch(() => {}); }
   ensureFreq();
   pyObs && pyObs.disconnect();
   // annotate paragraph by paragraph as they come near the screen: laying out thousands of <ruby> at once froze the page
   keepPlace(() => {
     $('#book').classList.add('py-on');
     const si = currentSection();
-    for (let k = Math.max(0, si - 1); k <= Math.min(R.data.sections.length - 1, si + 1); k++)
-      for (const bl of leafBlocks(R.data.sections[k].el)) { const r = bl.getBoundingClientRect(); if (r.bottom > -innerHeight && r.top < innerHeight * 2) annotate(bl); }
+    // measure every paragraph first, then annotate: alternating the two forced a full re-layout per paragraph
+    const bls = []; for (let k = Math.max(0, si - 1); k <= Math.min(R.data.sections.length - 1, si + 1); k++) bls.push(...leafBlocks(R.data.sections[k].el));
+    bls.filter(bl => { const r = bl.getBoundingClientRect(); return r.bottom > -innerHeight && r.top < innerHeight * 2; }).forEach(annotate);
     cvEstimate();
   });
   // visible paragraphs are annotated at once; the ones a few screens away are queued and done while the reader is idle
@@ -3150,8 +3162,8 @@ function chapterWords(d, a, b, isTrad) {
   return words;
 }
 const entriesFor = (w, nw) => { const es = Dict.entries(w) || Dict.entries(nw); if (es) return es; const ce = compoundEntry(w, nw); return ce ? [ce] : null; };
-async function addVocabWord(bookId, d, w, k, sent) {
-  const we = Dict.entries(w); if (!we) return false;
+async function addVocabWord(bookId, d, w, k, sent, found) {
+  const we = found || Dict.entries(w); if (!we || !we.length) return false; // entries found through the simplified form, for variants
   const e0 = we[0];
   if ((await DB.byBook(bookId)).some(v => v.simp === e0.simp)) return false;
   const ch = chapterIn(d, k);
@@ -3191,8 +3203,8 @@ async function showPrep(i) {
       const sentEl = h('div', { class: 's', hidden: true, html: esc(x.sent).replace(esc(x.w), `<mark>${esc(x.w)}</mark>`) });
       const isSaved = saved.has(e.simp);
       const add = e.synthetic ? h('span') : h('button', { class: isSaved ? 'saved' : '', 'aria-label': 'Ajouter ' + x.w, title: isSaved ? 'Déjà dans ton vocabulaire' : 'Ajouter au vocabulaire', onclick: async ev => {
-        ev.stopPropagation(); if (saved.has(e.simp)) return;
-        if (await addVocabWord(book.id, d, x.w, x.k, x.sent)) { saved.add(e.simp); add.classList.add('saved'); add.textContent = '✓'; }
+        ev.stopPropagation(); if (saved.has(e.simp) || add.disabled) return; add.disabled = true;
+        try { if (await addVocabWord(book.id, d, x.w, x.k, x.sent, es)) { saved.add(e.simp); add.classList.add('saved'); add.textContent = '✓'; } } finally { add.disabled = false; }
       } }, isSaved ? '✓' : '+');
       return h('div', { class: 'prep-row' },
         h('div', { onclick: () => { sentEl.hidden = !sentEl.hidden; } },
@@ -3231,7 +3243,7 @@ async function showPrep(i) {
   draw();
   const m = modal(`预习 · ${label}`, h('div', { class: 'pb' }, tabs, info, seg, listEl, idiomEl,
     h('div', { class: 'confirm-row' }, h('button', { class: 'btn primary', onclick: () => { m.close(); goSection(entry.s); } }, 'Aller au début du chapitre'),
-      h('button', { class: 'btn', title: 'Copie le chapitre et tes mots, puis ouvre Claude', onclick: () => chapterSummary(i, vlist) }, 'Résumé avec mes mots ↗'))));
+      h('button', { class: 'btn', title: 'Copie le chapitre et tes mots, puis ouvre Claude', onclick: async () => chapterSummary(i, await DB.byBook(book.id)) }, 'Résumé avec mes mots ↗'))));
 }
 function rangeIn(d, i) { const a = d.toc[i].s; let b = d.sections.length; for (let j = i + 1; j < d.toc.length; j++) if (d.toc[j].s > a) { b = d.toc[j].s; break; } return [a, b]; }
 function summaryPrompt(d, b, i, vlist) {
@@ -3257,7 +3269,9 @@ async function bookDataFor(id) {
   if (R.data && R.book && R.book.id === id) return R.data;
   if (V.dataFor === id && V.data) return V.data;
   const book = await DB.get('books', id), f = await DB.get('files', id); if (!book || !f) return null;
-  const d = await parseFor(book, f); V.dataFor = id; V.data = d; return d;
+  const d = await parseFor(book, f);
+  if (V.data && V.data !== R.data) V.data.urls.forEach(u => URL.revokeObjectURL(u)); // the previous one is no longer shown
+  V.dataFor = id; V.data = d; return d;
 }
 
 /* ================= read aloud (听) ================= */
