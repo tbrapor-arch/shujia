@@ -12,16 +12,17 @@ document.querySelector('meta[name=color-scheme]').content=t==='light'?'only ligh
 <meta name="description" content="Lecteur de romans chinois avec dictionnaire intégré.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="书架">
+<title>Shūjià 书架</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- the font list must not hold up the first screen on a slow connection: it applies when it arrives -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@400;600&family=LXGW+WenKai+TC&display=swap" media="print" onload="this.media='all'">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>Shūjià 书架</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@400;600&family=LXGW+WenKai+TC&display=swap">
 <style>
 /* Layout: a bookshelf (cover grid) that opens into a single quiet reading column; the dictionary is a paper slip that floats over the text (desktop) or slides up (phone). */
 :root {
@@ -118,7 +119,9 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .book-card h3 { margin: 0; font-family: var(--f-serif); font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .book-card .au { margin: 0; font-size: 13px; color: var(--muted); }
 .book-card .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.book-card .linkish { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+/* no dot separators: on a narrow card they ended up alone at the end of a line */
+.book-card .row.links { gap: 0 12px; }
+.book-card .linkish { border: 0; background: none; padding: 5px 0; color: var(--accent); font-size: 12px; font-weight: 600; }
 .stars { color: var(--t2); letter-spacing: 1px; font-size: 12px; }
 .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 36px 20px; text-align: center; color: var(--muted); }
 .book-card.drop-on .cover { outline: 3px solid var(--accent); outline-offset: 3px; }
@@ -375,8 +378,9 @@ body.reading { background: var(--rbg); }
 .modal .panel { background: var(--surface); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); width: min(640px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; }
 .panel header { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .panel header h2 { margin: 0; font-size: 17px; flex: 1; min-width: 0; }
-.panel .pb { padding: 16px 20px 20px; display: grid; gap: 14px; }
-.detail-top { display: grid; grid-template-columns: 110px 1fr; gap: 16px; align-items: start; }
+.panel .pb { padding: 16px 20px 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.panel .pb .btn { white-space: normal; text-align: left; }
+.detail-top { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 16px; align-items: start; }
 .detail-top .cover { width: 110px; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .rate { display: flex; gap: 2px; }
@@ -461,7 +465,7 @@ body.reading { background: var(--rbg); }
   .vrow .w { grid-column: 1; }
   .vrow .acts { grid-row: 1; grid-column: 2; }
   .vrow .info { grid-column: 1 / -1; }
-  .detail-top { grid-template-columns: 84px 1fr; }
+  .detail-top { grid-template-columns: 84px minmax(0, 1fr); }
   .detail-top .cover { width: 84px; }
   .rbar .lbl { display: none; }
 }
@@ -521,7 +525,6 @@ body.reading { background: var(--rbg); }
 <div class="pop" id="pop" hidden></div>
 <div class="pop notepop" id="notepop" hidden></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 "use strict";
 /* ================= helpers ================= */
@@ -554,6 +557,7 @@ function toast(msg, action) {
   $$('.toast').forEach(t => t.remove());
   const t = h('div', { class: 'toast', role: 'status' }, msg, action ? h('button', { onclick: () => { action.fn(); t.remove(); } }, action.label) : null);
   document.body.append(t);
+  const pop = $('#pop'); if (pop && !pop.hidden && pop.classList.contains('sheet')) t.style.bottom = pop.offsetHeight + 12 + 'px'; // above the dictionary sheet, not over its buttons
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), action ? 6000 : 2600);
 }
 const LS = {
@@ -892,7 +896,7 @@ function dcText(opf, name) {
   return el ? el.textContent.trim() : '';
 }
 async function importEpub(file) {
-  const zip = await JSZip.loadAsync(file);
+  const zip = await (await loadZip()).loadAsync(file);
   const pkg = await openPackage(zip); const { opf, manifest } = pkg;
   const fromName = nameParts(file.name);
   let isbn = '';
@@ -1028,7 +1032,7 @@ function extractTitle(sec, len) {
   return null;
 }
 async function parseEpubForReading(blob) {
-  const zip = await JSZip.loadAsync(blob);
+  const zip = await (await loadZip()).loadAsync(blob);
   const pkg = await openPackage(zip);
   const urls = [], pathIndex = new Map(), sections = [], imgJobs = [], imgCache = new Map();
   pkg.spine.forEach((it, i) => pathIndex.set(it.href, i));
@@ -1242,7 +1246,7 @@ async function parseMobiForReading(blob) {
 }
 async function fb2Blob(blob) {
   const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
-  if (head[0] === 0x50 && head[1] === 0x4B) { const zip = await JSZip.loadAsync(blob); const f = Object.values(zip.files).find(x => /\.fb2$/i.test(x.name)); if (!f) throw new Error('aucun fichier FB2 dans l\'archive'); return f.async('blob'); }
+  if (head[0] === 0x50 && head[1] === 0x4B) { const zip = await (await loadZip()).loadAsync(blob); const f = Object.values(zip.files).find(x => /\.fb2$/i.test(x.name)); if (!f) throw new Error('aucun fichier FB2 dans l\'archive'); return f.async('blob'); }
   return blob;
 }
 async function openFb2(blob) { const m = await import(libURL('lib/fb2.js')); return m.makeFB2(await fb2Blob(blob)); }
@@ -1255,7 +1259,7 @@ async function importFb2(file) {
 // fb2.js keeps one blob URL per section until destroy(); we read the sections directly, so free them once done
 async function parseFb2ForReading(blob) { const book = await openFb2(blob); try { return await foliateToReading(book, src => /^data:/.test(src || '') ? Promise.resolve(src) : null); } finally { try { book.destroy && book.destroy(); } catch {} } }
 async function docxRead(blob) {
-  const zip = await JSZip.loadAsync(blob); const f = zip.file('word/document.xml'); if (!f) throw new Error('document Word illisible');
+  const zip = await (await loadZip()).loadAsync(blob); const f = zip.file('word/document.xml'); if (!f) throw new Error('document Word illisible');
   const doc = xmlDoc(await f.async('string')); const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
   const lines = [...doc.getElementsByTagNameNS(W, 'p')].map(p => [...p.getElementsByTagNameNS(W, 't')].map(t => t.textContent).join(''));
   let title = '', author = '';
@@ -1294,6 +1298,18 @@ async function parseHtmlForReading(blob) {
 
 /* ================= PDF (pdf.js, text layer only) ================= */
 let pdfjsP = null, cmapsP = null;
+// the zip reader (EPUB, DOCX) is fetched when first needed, so the app starts without waiting for it
+let zipP = null;
+function loadZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  return zipP || (zipP = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    sc.onload = () => res(window.JSZip);
+    sc.onerror = () => { zipP = null; sc.remove(); rej(new Error('impossible de charger le lecteur EPUB (pas de connexion ?)')); };
+    document.head.append(sc);
+  }));
+}
 function loadPdfjs() {
   if (pdfjsP) return pdfjsP;
   pdfjsP = new Promise((res, rej) => {
@@ -1500,12 +1516,11 @@ async function renderLibraryNow() {
         b.status === 'reading' && b.progress ? h('span', null, Math.round(b.progress * 100) + ' %') : null,
         b.rating ? h('span', { class: 'stars', title: `${b.rating}/5` }, starText(b.rating)) : null,
         b.ext && b.ext.rating ? h('span', { title: 'Note Douban' }, '豆瓣 ' + b.ext.rating) : null),
-      b.stats && b.stats.v === STATS_V ? h('div', { class: 'row', title: `${LEN_BANDS[lenBand(b.stats.chars)][1]} · difficulté ${diffLevel(b.stats)}/6 (${DIFF[diffLevel(b.stats) - 1][1]})` }, h('span', null, fmtWan(b.stats.chars)), h('span', null, '·'), h('span', null, `Difficulté ${diffLevel(b.stats)}/6`)) : null,
-      h('div', { class: 'row' },
+      b.stats && b.stats.v === STATS_V ? h('div', { class: 'row links', title: `${LEN_BANDS[lenBand(b.stats.chars)][1]} · difficulté ${diffLevel(b.stats)}/6 (${DIFF[diffLevel(b.stats) - 1][1]})` }, h('span', null, fmtWan(b.stats.chars)), h('span', null, `Difficulté ${diffLevel(b.stats)}/6`)) : null,
+      h('div', { class: 'row links' },
         h('button', { class: 'linkish', onclick: () => showDetails(b.id) }, 'Fiche'),
-        b.stats && b.stats.v === STATS_V ? [h('span', null, '·'), h('button', { class: 'linkish', onclick: () => showStats(b.id, 'overview') }, 'Stats'), h('span', null, '·'),
+        b.stats && b.stats.v === STATS_V ? [h('button', { class: 'linkish', onclick: () => showStats(b.id, 'overview') }, 'Stats'),
           h('button', { class: 'linkish', onclick: () => showStats(b.id, 'rare') }, 'Rares')] : null,
-        n ? h('span', null, '·') : null,
         n ? h('button', { class: 'linkish', onclick: () => showVocab({ bookId: b.id }) }, `${n} mot${n > 1 ? 's' : ''}`) : null)));
   }
 }
@@ -3426,7 +3441,7 @@ function ttsMsg(t) { const m = $('#tts-msg'); if (m) { m.textContent = t; m.hidd
 function drawTts() {
   const box = $('#tts-in'); if (!TTS.on) return;
   const vs = zhVoices(); const cur = TTS.voice || pickVoice();
-  box.replaceChildren(
+  box.replaceChildren(...[
     h('button', { class: 'btn small', title: 'Phrase précédente', 'aria-label': 'Phrase précédente', onclick: () => ttsStep(-1) }, '⏮'),
     h('button', { class: 'btn primary play', 'aria-label': TTS.playing ? 'Pause' : 'Lire', onclick: () => TTS.playing ? ttsPause() : ttsPlay() }, TTS.playing ? '❚❚' : '▶'),
     h('button', { class: 'btn small', title: 'Phrase suivante', 'aria-label': 'Phrase suivante', onclick: () => ttsStep(1) }, '⏭'),
@@ -3436,7 +3451,7 @@ function drawTts() {
       vs.map(v => h('option', { value: v.name, selected: cur && v.name === cur.name }, `${v.name.replace(/^(Microsoft|Google)\s*/, '')} (${v.lang})`))) : null,
     h('button', { class: 'btn small ghost', title: 'Repartir de l\'écran', onclick: () => { TTS.fromView = true; if (TTS.playing) ttsPlay(); else { TTS.bi = ttsStartIndex(); TTS.sents = null; TTS.fromView = false; ttsStep(0); } } }, 'Ici'),
     h('button', { class: 'icon-btn', 'aria-label': 'Fermer la lecture audio', onclick: () => ttsStop() }, '✕'),
-    h('span', { class: 'msg', id: 'tts-msg', hidden: true }));
+    h('span', { class: 'msg', id: 'tts-msg', hidden: true })].filter(Boolean)); // without a Chinese voice there is no voice menu (a bare null would be written as text)
 }
 $('#r-tts').addEventListener('click', () => {
   if (TTS.on) { ttsStop(); return; }
@@ -4029,6 +4044,7 @@ const SAMPLE = `第一章 雨天
     $$('.toast').forEach(t => t.remove());
   } else renderLibrary();
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
+  setTimeout(() => loadZip().catch(() => {}), 2500);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
   try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(reg => { const up = () => reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') up(); }); setInterval(up, 30 * 60 * 1000); }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book || topLayer() || Sync.busy || importing) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
