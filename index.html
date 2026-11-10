@@ -70,14 +70,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .zh { font-family: var(--f-serif); }
 .muted { color: var(--muted); }
 .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; font-weight: 500; font-size: 14px; white-space: nowrap; }
-.btn:hover { border-color: var(--muted); }
+@media (hover: hover) { .btn:hover { border-color: var(--muted); } }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn.ghost { background: transparent; border-color: transparent; }
-.btn.ghost:hover { background: var(--accent-soft); }
+@media (hover: hover) { .btn.ghost:hover { background: var(--accent-soft); } }
 .btn.danger { color: var(--seal); }
 .btn.small { padding: 4px 9px; font-size: 13px; }
 .icon-btn { border: 0; background: transparent; width: 38px; height: 38px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 16px; }
-.icon-btn:hover { background: var(--accent-soft); }
+@media (hover: hover) { .icon-btn:hover { background: var(--accent-soft); } }
+.icon-btn:active, .btn.ghost:active { background: var(--accent-soft); }
 input[type=text], input[type=url], input[type=date], input[type=search], input[type=number], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; min-width: 0; }
 textarea { min-height: 90px; resize: vertical; }
@@ -105,7 +106,7 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .book-card { display: grid; gap: 8px; align-content: start; min-width: 0; }
 .cover { position: relative; aspect-ratio: 2 / 3; width: 100%; max-width: 100%; border: 0; padding: 0; border-radius: 3px 6px 6px 3px; overflow: hidden; box-shadow: var(--shadow); background: var(--line); display: block; }
 .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.cover:hover { transform: translateY(-2px); transition: transform .15s; }
+@media (hover: hover) { .cover:hover { transform: translateY(-2px); transition: transform .15s; } }
 .cover .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.25); }
 .cover .prog i { display: block; height: 100%; background: var(--accent); }
 /* generated cover: thread-bound book with a title slip (题签) */
@@ -135,8 +136,8 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 #reader[data-paper="sepia"] { --rbg: #F1E7D2; --rink: #3A2F22; --line: #DCCDAF; --surface: #FAF4E6; --muted: #7A6A55; --accent-soft: #E7DABE; color-scheme: light; }
 #reader[data-paper="night"] { --rbg: #101311; --rink: #C9CEC8; --line: #262C28; --surface: #181D1A; --muted: #8B938D; --accent-soft: #1E2C27; color-scheme: dark; }
 body.reading { background: var(--rbg); }
-/* paragraphs off screen are neither laid out nor painted; their height is measured beforehand so scrolling and positions stay exact */
-.book.cv .cvb { content-visibility: auto; overflow-clip-margin: 1em; } /* the chengyu line below the pinyin may sit under the paragraph box */
+/* chapters off screen are neither laid out nor painted; their height is estimated from their length, then remembered by the browser once shown */
+.book.cv section { content-visibility: auto; overflow-clip-margin: 1em; } /* the chengyu line below the pinyin may sit under the section box */
 #reader[data-paper="sepia"], #reader[data-paper="night"] { }
 .rbar { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding: env(safe-area-inset-top, 0px) 8px 0; background: var(--rbg); border-bottom: 1px solid var(--line); }
 .rbar-in { height: var(--bar-h); display: flex; align-items: center; gap: 4px; max-width: 1080px; margin: 0 auto; }
@@ -146,13 +147,13 @@ body.reading { background: var(--rbg); }
 .rbar .lbl { font-size: 13px; font-weight: 600; }
 .rbar .where span .goal { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
 .book .goal-end::after { content: attr(data-goal); display: block; margin: .9em 0 .2em; padding-top: .35em; border-top: 1.5px dashed var(--accent); color: var(--accent); font-family: var(--f-ui); font-size: 12px; text-indent: 0; text-align: center; letter-spacing: .04em; }
-#r-pct { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font: 500 11px var(--f-ui); color: var(--muted); opacity: .7; pointer-events: none; z-index: 30; font-variant-numeric: tabular-nums; }
+#r-pct { position: fixed; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); font: 500 11px var(--f-ui); color: var(--muted); padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--rbg) 82%, transparent); pointer-events: none; z-index: 30; font-variant-numeric: tabular-nums; }
 #r-pct[hidden] { display: none; }
 .goal-form { display: grid; gap: 12px; }
 .jr { display: grid; gap: 14px; }
 .tlist { display: grid; gap: 10px; }
 .tcard { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 14px; align-items: baseline; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; cursor: pointer; font: inherit; color: inherit; }
-.tcard:hover { border-color: var(--accent); }
+@media (hover: hover) { .tcard:hover { border-color: var(--accent); } }
 .tcard .no { font-family: var(--f-ui); color: var(--muted); font-size: 13px; }
 .tcard .zh { font-family: var(--f-serif); font-size: 22px; }
 .tcard .fr { color: var(--muted); }
@@ -167,7 +168,7 @@ body.reading { background: var(--rbg); }
 .trow .i .fr { color: var(--muted); }
 .trow .a { display: flex; gap: 2px; }
 .trow .a button { border: 0; background: transparent; color: var(--muted); border-radius: 8px; padding: 4px 7px; cursor: pointer; font-size: 14px; }
-.trow .a button:hover { color: var(--accent); background: var(--accent-soft); }
+@media (hover: hover) { .trow .a button:hover { color: var(--accent); background: var(--accent-soft); } }
 .trow .ex { grid-column: 1 / -1; }
 .tsent { font-family: var(--f-serif); font-size: 18px; line-height: 1.9; padding: 6px 0; }
 .tsent b { font-weight: 600; color: var(--accent); }
@@ -196,6 +197,7 @@ body.reading { background: var(--rbg); }
 .book { max-width: 34em; margin: 0 auto; padding-top: calc(var(--bar-h) + 40px); padding-bottom: 40vh; font-family: var(--rfont); font-size: var(--rs); line-height: var(--rlh); text-align: justify; overflow-wrap: anywhere; }
 .book section { scroll-margin-top: calc(var(--bar-h) + 16px); }
 .book section + section { margin-top: 1.5em; }
+.book section + section.cont { margin-top: 0; }
 .book section.starts { padding-top: 2.5em; }
 .book p { margin: 0 0 .55em; text-indent: 2em; }
 .book p.chap-head, .book .chap-head { text-indent: 0; text-align: left; font-size: 1.3em; font-weight: 600; line-height: 1.5; margin: 0 0 1.2em; }
@@ -228,19 +230,19 @@ body.reading { background: var(--rbg); }
 ::highlight(tts) { background-color: var(--accent-soft); color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: .25em; }
 .book .prep, .book section.part .prep { text-indent: 0; margin: -.4em 0 1.4em; font-family: var(--f-ui); font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; }
 .book .prep button { border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 99px; padding: 4px 12px; }
-.book .prep button:hover { color: var(--accent); border-color: var(--accent); }
+@media (hover: hover) { .book .prep button:hover { color: var(--accent); border-color: var(--accent); } }
 .search { display: grid; gap: 6px; padding: 4px 10px 10px; }
 .search label { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .search-res { display: grid; padding: 0 2px; }
 .search-res .cnt { font-size: 12.5px; color: var(--muted); padding: 2px 10px 6px; }
 .search-res .sr { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; font-family: var(--f-serif); font-size: 14.5px; line-height: 1.5; color: var(--ink); }
-.search-res .sr:hover { background: var(--accent-soft); }
+@media (hover: hover) { .search-res .sr:hover { background: var(--accent-soft); } }
 .search-res .sr mark { background: var(--hl); color: inherit; }
 .search-res .sr small { display: block; font-family: var(--f-ui); font-size: 11.5px; color: var(--muted); }
 .toc .row { display: flex; align-items: center; gap: 4px; }
 .toc .row a { flex: 1; min-width: 0; }
 .toc .row button { border: 0; background: none; color: var(--muted); font-family: var(--f-serif); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
-.toc .row button:hover { background: var(--accent-soft); color: var(--accent); }
+@media (hover: hover) { .toc .row button:hover { background: var(--accent-soft); color: var(--accent); } }
 .prep-list { display: grid; }
 .prep-list[hidden], .seg[hidden] { display: none; }
 .prep-row { border-bottom: 1px solid var(--line); }
@@ -295,7 +297,7 @@ body.reading { background: var(--rbg); }
 .toc a.lv1 { padding-left: 26px; font-size: 14px; }
 .toc a.lv2 { padding-left: 42px; font-size: 13.5px; }
 .toc a.lv0 { font-weight: 600; }
-.toc a:hover { background: var(--accent-soft); }
+@media (hover: hover) { .toc a:hover { background: var(--accent-soft); } }
 .toc a.cur { background: var(--accent-soft); color: var(--accent); }
 .toc .note { font-family: var(--f-ui); font-size: 12px; color: var(--muted); padding: 4px 10px 10px; }
 .set-group { display: grid; gap: 8px; padding: 10px 10px 16px; border-bottom: 1px solid var(--line); }
@@ -344,7 +346,8 @@ body.reading { background: var(--rbg); }
 .pop .pf .grow { flex: 1; }
 .pop .pf { flex-wrap: wrap; }
 .pop .say { border: 0; background: transparent; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
-.pop .say:hover, .pop .say.on { color: var(--accent); background: var(--accent-soft); }
+.pop .say.on { color: var(--accent); background: var(--accent-soft); }
+@media (hover: hover) { .pop .say:hover { color: var(--accent); background: var(--accent-soft); } }
 .pop kbd { font-family: var(--f-ui); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
 
 /* ---------- Vocabulary ---------- */
@@ -423,7 +426,7 @@ body.reading { background: var(--rbg); }
 .rare-list { display: grid; }
 .rare { border-bottom: 1px solid var(--line); }
 .rare > button { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; background: none; border: 0; padding: 8px 2px; }
-.rare > button:hover { background: var(--accent-soft); }
+@media (hover: hover) { .rare > button:hover { background: var(--accent-soft); } }
 .rare .c { font-family: var(--f-serif); font-size: 30px; line-height: 1; text-align: center; }
 .rare .m { min-width: 0; display: grid; font-size: 13px; }
 .rare .m .d { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1131,13 +1134,30 @@ function splitAtChapterLines(sections) {
   });
   return { sections: out, toc };
 }
+// a very long chapter, or a whole book in one file without chapters: cut into pieces, so that only the piece on screen is laid out (see cvEstimate)
+function chunkSections(sections, toc) {
+  const MAX = 200;
+  if (!sections.some(s => s.el.children.length > MAX * 1.5)) return { sections, toc };
+  const out = [], map = [];
+  sections.forEach((sec, k) => {
+    map[k] = out.length; out.push(sec);
+    if (sec.el.children.length <= MAX * 1.5) return;
+    const kids = [...sec.el.childNodes]; let el = null, n = 0;
+    for (const kid of kids) {
+      if (kid.nodeType === 1 && ++n > MAX) { n = 1; el = document.createElement('section'); el.className = 'cont'; out.push({ el, spine: sec.spine, href: sec.href, cont: true }); }
+      if (el) el.append(kid);
+    }
+  });
+  return { sections: out, toc: toc.map(t => map[t.s] == null ? t : { ...t, s: map[t.s] }) };
+}
 function finishBook(sections, toc, urls, pathIndex) {
   let chapNote = '';
   if (toc.length < 3) { const sp = splitAtChapterLines(sections); if (sp && sp.toc.length > toc.length) { sections = sp.sections; toc = sp.toc; chapNote = 'Chapitres repérés dans le texte.'; } }
+  ({ sections, toc } = chunkSections(sections, toc));
   sections.forEach((s, k) => { s.len = textLen(s.el); s.el.dataset.i = k; });
   const nonEmpty = sections.filter(s => s.len > 0).length;
   // title detection always runs: it also marks chapter headings for styling
-  const found = sections.map(s => extractTitle(s.el, s.len));
+  const found = sections.map(s => s.cont ? null : extractTitle(s.el, s.len));
   let tocNote = '';
   if (toc.length < Math.min(3, Math.ceil(nonEmpty * 0.5))) {
     toc = []; let partSeen = false;
@@ -2052,12 +2072,12 @@ async function openBook(id) {
   if (book.status === 'toread') { book.status = 'reading'; if (!book.startDate) book.startDate = today(); }
   book.lastRead = Date.now(); DB.put('books', book);
   const vocab = await DB.byBook(id); if (my !== openSeq) return; R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
+  cvSetup(); // before the text enters the page: the whole book is never laid out at once
   bookEl.replaceChildren(...R.data.sections.map(s => s.el), h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
   ensureDict();
   try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
   if (my !== openSeq) return;
   addPrepButtons();
-  cvRefresh();
   restorePos();
   if (settings.pinyin) startPinyin();
   if (settings.vocabHl) VH.start();
@@ -2412,7 +2432,8 @@ const Goal = {
     const out = []; out.byEl = new Map();
     R.data.sections.forEach((sec, si) => {
       const base = R.data.before[si], len = sec.len; let acc = 0;
-      for (const bl of leafBlocks(sec.el)) { const n = blockLen(bl); if (!n) continue; const a = base + acc; acc = Math.min(len, acc + n); out.push({ off: base + acc, el: bl }); out.byEl.set(bl, [a, base + acc]); }
+      sec.bl = [];
+      for (const bl of leafBlocks(sec.el)) { const n = blockLen(bl); sec.bl.push(n); if (!n) continue; const a = base + acc; acc = Math.min(len, acc + n); out.push({ off: base + acc, el: bl }); out.byEl.set(bl, [a, base + acc]); }
     });
     return (R.data.paraEnds = out);
   },
@@ -2445,7 +2466,7 @@ const Goal = {
   },
   posOnScreen(fallback) {
     const y = barH() + 2, book = $('#book'), hit = document.elementsFromPoint(innerWidth / 2, y).find(e => book.contains(e) && e !== book);
-    const bl = hit && (hit.closest('.cvb') || hit.closest(BLOCK_SEL)); const ab = bl && this.paraEnds().byEl.get(bl);
+    const bl = hit && hit.closest(BLOCK_SEL); const ab = bl && this.paraEnds().byEl.get(bl);
     if (!ab) return fallback;
     const r = bl.getBoundingClientRect(); return ab[0] + Math.max(0, Math.min(1, (y - r.top) / Math.max(1, r.height))) * (ab[1] - ab[0]);
   },
@@ -2625,6 +2646,21 @@ function prevPosition(node, off, block) {
   const tw = textWalker(block); tw.currentNode = node;
   let n = tw.previousNode(); while (n && !n.data.length) n = tw.previousNode();
   return n ? { node: n, off: n.data.length - 1 } : null;
+}
+// a finger rarely lands on the first character of a word: start from the beginning of the word the touched character belongs to
+function wordStart(c) {
+  if (!Words.ready || !Dict.ready) return c;
+  ensureFreq();
+  const block = c.node.parentElement.closest(BLOCK_SEL) || $('#book'), back = [];
+  for (let p = c; back.length < 8;) { const q = prevPosition(p.node, p.off, block); if (!q || !HAN.test(q.node.data[q.off])) break; back.push(q); p = q; }
+  if (!back.length) return c;
+  const pre = back.map(q => q.node.data[q.off]).reverse().join(''), i = pre.length;
+  const raw = pre + (/^[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3007]+/.exec(collect(c.node, c.off, 8).str) || [''])[0], run = normZh(raw, bookIsTrad());
+  for (const [a, b] of segment(run)) if (a <= i && i < b) {
+    if (a === i || !(Dict.entries(raw.slice(a, b)) || Dict.entries(run.slice(a, b)) || Words.map.has(run.slice(a, b)))) return c;
+    return back[i - a - 1];
+  }
+  return c;
 }
 function hitRange(len) {
   const p = P.hit.pos; if (!p.length) return null;
@@ -2872,8 +2908,8 @@ $('#book').addEventListener('click', e => {
     goSection(k, a.dataset.frag); return;
   }
   if (String(getSelection()).length > 1) return;
-  const c = caretAt(e.clientX, e.clientY);
-  if (c) { showHit(collect(c.node, c.off), e.clientX, e.clientY, true); }
+  let c = caretAt(e.clientX, e.clientY);
+  if (c) { if (isTouch()) c = wordStart(c); showHit(collect(c.node, c.off), e.clientX, e.clientY, true); }
   else hidePop();
 });
 document.addEventListener('click', e => {
@@ -3054,33 +3090,43 @@ function unannotate(sec) {
   if (VH.done.has(sec)) VH.mark(sec);
 }
 let pyObs = null;
-function cvEstimate() {
-  const b = $('#book'); if (!R.data || !b.classList.contains('cv')) return cvRefresh();
-  const L = Goal.paraEnds(); let act = 0, raw = 0;
-  const w = Math.max(100, b.clientWidth), fs = parseFloat(getComputedStyle(b).fontSize) || 20;
-  const rawOf = e => { const ab = L.byEl.get(e); const n = ab ? ab[1] - ab[0] : 0; return Math.ceil(Math.max(1, n) * fs / w); };
-  const els = [...b.querySelectorAll('.cvb')], near = els.map(e => { const r = e.getBoundingClientRect(); return r.bottom > -innerHeight && r.top < innerHeight * 2 ? r.height : -1; }); // all reads first
-  els.forEach((e, i) => { if (near[i] > 0) { act += near[i]; raw += rawOf(e); } });
-  if (!raw) return;
-  const k = act / raw; // pixels per estimated line, calibrated on what is rendered now
-  els.forEach((e, i) => { if (near[i] < 0) e.style.containIntrinsicBlockSize = `auto ${Math.round(rawOf(e) * k)}px`; }); // then writes only
+// Each chapter (<section>) off screen is skipped by the browser (content-visibility), so opening a book and scrolling cost the same whatever its length.
+// A skipped chapter needs a height: estimated from its paragraphs' lengths, scaled on the chapters on screen. Once a chapter has been shown, the browser remembers its real height ("auto").
+const CV = { key: '' };
+function cvMetrics() {
+  const b = $('#book'), cs = getComputedStyle(b), fs = parseFloat(cs.fontSize) || 20;
+  return { w: Math.max(100, b.clientWidth), fs, lh: parseFloat(cs.lineHeight) || fs * settings.lh };
 }
-function cvRefresh() {
-  if (!R.data) return;
-  const b = $('#book'); b.classList.remove('cv');
-  const els = R.data.sections.flatMap(s => leafBlocks(s.el)).filter(e => e !== s0(e));
-  const hs = els.map(e => e.offsetHeight);
-  els.forEach((e, i) => { e.classList.add('cvb'); e.style.containIntrinsicBlockSize = `auto ${hs[i]}px`; });
+function cvRaw(sec, m) {
+  let px = sec.el.classList.contains('starts') ? 2.5 * m.fs : 0;
+  for (const n of sec.bl || [0]) px += Math.ceil((n + 2) * m.fs / m.w) * m.lh + .55 * m.fs;
+  return px;
+}
+function cvSetup() {
+  const b = $('#book'); Goal.paraEnds();
+  const m = cvMetrics(); CV.key = '';
+  for (const s of R.data.sections) { s.el.style.containIntrinsicBlockSize = `auto ${Math.round(cvRaw(s, m))}px`; }
   b.classList.add('cv');
 }
-const s0 = e => e.tagName === 'SECTION' ? e : null;
+function cvEstimate() {
+  const b = $('#book'); if (!R.data || !b.classList.contains('cv')) return;
+  const secs = R.data.sections, m = cvMetrics(), raws = secs.map(s => cvRaw(s, m));
+  const key = [m.w, m.fs, m.lh, b.classList.contains('py-on'), settings.pySize].join('|'), changed = CV.key && CV.key !== key; CV.key = key;
+  // all reads first: the chapters on screen give the real number of pixels per estimated pixel (fonts, headings, pinyin)
+  const near = secs.map(s => { const r = s.el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight ? r.height : -1; });
+  let act = 0, raw = 0; near.forEach((hgt, i) => { if (hgt > 0 && secs[i].len > 40) { act += hgt; raw += raws[i]; } });
+  const k = raw ? Math.min(3, Math.max(.5, act / raw)) : 1, px = i => Math.round(raws[i] * k);
+  // text size, width or pinyin changed: the heights remembered for chapters shown earlier are wrong now, forget them
+  if (changed) { secs.forEach((s, i) => { if (near[i] < 0) s.el.style.containIntrinsicBlockSize = px(i) + 'px'; }); getComputedStyle(b).fontSize; }
+  secs.forEach((s, i) => { if (near[i] < 0) s.el.style.containIntrinsicBlockSize = `auto ${px(i)}px`; });
+}
 let cvT = 0;
 addEventListener('resize', () => { clearTimeout(cvT); cvT = setTimeout(() => { if (R.data && !$('#reader').hidden) keepPlace(cvEstimate); }, 250); });
 function keepPlace(fn) {
   if (!R.data || $('#reader').hidden) return fn();
   // anchor on the paragraph at the top of the screen (exact), else on the section (proportional)
   const y = barH() + 2, book = $('#book'), hit = document.elementsFromPoint(innerWidth / 2, y).find(e => book.contains(e) && e !== book);
-  const bl = hit ? hit.closest('.cvb') || hit.closest(BLOCK_SEL) : null;
+  const bl = hit ? hit.closest(BLOCK_SEL) : null;
   if (bl && bl.closest('section')) {
     const r0 = bl.getBoundingClientRect(), f = (y - r0.top) / Math.max(1, r0.height);
     fn();
@@ -3117,8 +3163,15 @@ function startPinyin() {
   };
   const near = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.py) queue.add(e.target); pump(); }, { rootMargin: '2500px 0px' });
   const now = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting && !e.target.dataset.py) { annotate(e.target); queue.delete(e.target); } }, { rootMargin: '200px 0px' });
-  pyObs = { disconnect() { near.disconnect(); now.disconnect(); queue.clear(); } };
-  R.data.sections.forEach(s => leafBlocks(s.el).forEach(bl => { if (!bl.dataset.py) { near.observe(bl); now.observe(bl); } }));
+  // paragraphs are only watched while their chapter is near the screen: watching every paragraph of a long book slowed each frame down
+  const watched = new Map();
+  const secs = new IntersectionObserver(es => { for (const e of es) {
+    const bls = watched.get(e.target);
+    if (e.isIntersecting && !bls) { const l = leafBlocks(e.target).filter(bl => !bl.dataset.py); watched.set(e.target, l); l.forEach(bl => { near.observe(bl); now.observe(bl); }); }
+    else if (!e.isIntersecting && bls) { watched.delete(e.target); bls.forEach(bl => { near.unobserve(bl); now.unobserve(bl); queue.delete(bl); }); }
+  } }, { rootMargin: '3000px 0px' });
+  pyObs = { disconnect() { secs.disconnect(); near.disconnect(); now.disconnect(); queue.clear(); watched.clear(); } };
+  R.data.sections.forEach(s => secs.observe(s.el));
 }
 function stopPinyin() {
   pyObs && pyObs.disconnect(); pyObs = null;
