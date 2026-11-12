@@ -11,7 +11,8 @@ self.addEventListener('install', e => {
     caches.open(STATIC).then(c => Promise.all(LIBS.map(u => c.match(u).then(hit => hit || c.add(u)).catch(() => {}))))]));
   self.skipWaiting();
 });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V && k !== STATIC).map(k => caches.delete(k))))); self.clients.claim(); });
+// only this app's own old caches: the other apps on tbrapor-arch.github.io share the same cache storage
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('shujia-') && k !== V && k !== STATIC).map(k => caches.delete(k))))); self.clients.claim(); });
 // only complete answers are kept (an opaque error page or a font stylesheet that failed must not stick forever)
 const cacheFirst = async req => { const c = await caches.open(STATIC); const hit = await c.match(req); if (hit) return hit; const r = await fetch(req); if (r.ok || (r.type === 'opaque' && req.destination === 'script')) c.put(req, r.clone()); return r; };
 // a weak mobile connection must not keep the app from opening: after a few seconds, the copy on the phone is used
