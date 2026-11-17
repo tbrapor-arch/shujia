@@ -309,6 +309,24 @@ body.reading { background: var(--rbg); }
 .book .pod-h { display: flex; align-items: baseline; gap: .1em; flex-wrap: wrap; }
 .book .pod-h .pchip { font-size: 12px; vertical-align: .25em; }
 .book .pseg.now { background: var(--accent-soft); } /* only where CSS highlights are missing */
+/* « Lignes » layout of an episode: one row per sentence; time chip (and speaker) in a narrow gutter, then the Chinese, the
+   pinyin line and the English line. Both lines are empty elements drawn from attributes (generated content): not book text */
+.book .lgrp { margin: 0 0 .75em; }
+.book p.lrow { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 4px; margin: 0; padding: .28em .4em .34em 0; text-indent: 0; text-align: left; border-radius: 10px; }
+.book p.lrow > .pchip { grid-column: 1; grid-row: 1 / span 3; align-self: start; flex-direction: column; align-items: flex-start; width: 100%; min-height: 34px; margin: 0; padding: .55em 0 0 4px; border: 0; border-radius: 8px; font-size: 10.5px; line-height: 1.25; vertical-align: 0; }
+.book p.lrow > .pchip[data-sp]::after { margin: 3px 0 0; font-size: 13px; line-height: 1.2; }
+.book p.lrow > .pseg, .book p.lrow > .lpy, .book p.lrow > .len { grid-column: 2; min-width: 0; }
+.book p.lrow > .pseg { line-height: 1.7; }
+.book.py-on p.lrow > .pseg { line-height: inherit; }
+.book .lpy { display: block; min-height: 1.4em; font: 400 .74em/1.4 var(--f-ui); color: var(--muted); letter-spacing: .01em; overflow-wrap: break-word; }
+.book .lpy::before { content: attr(data-py); }
+.book .len { display: block; margin-top: .12em; font: 400 .85em/1.42 var(--f-ui); color: var(--muted); overflow-wrap: break-word; }
+.book .len::before { content: attr(data-en); }
+.book.l-nopy .lpy, .book.py-on .lpy, .book.l-en-off .len { display: none; }
+.book.l-en-tap .len:not(.open) { cursor: pointer; }
+.book.l-en-tap .len:not(.open)::before { content: 'EN · toucher pour voir'; display: inline-block; padding: 0 .7em; border: 1px dashed var(--line); border-radius: 99px; font-size: .82em; line-height: 1.7; }
+.book p.lrow.now { background: var(--accent-soft); }
+.pa .pa-b.pa-t { font: 600 12.5px var(--f-ui); }
 .ex { display: grid; gap: 8px; }
 .ex .exs { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; font-family: var(--f-serif); font-size: 15px; line-height: 1.55; }
 .ex .exs mark { background: var(--hl); color: inherit; border-radius: 2px; }
@@ -846,7 +864,7 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
   .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
-const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', theme: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '', podRate: 1, podDictPause: false }, LS.get('settings', {}));
+const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', theme: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '', podRate: 1, podDictPause: false, podLayout: '', podPy: true, podEn: 'show' }, LS.get('settings', {}));
 if (settings.vocabHl === true) settings.vocabHl = 'book';
 if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
 function applyTheme() {
@@ -1529,14 +1547,20 @@ async function gitSha(blob) {
     return [...new Uint8Array(await crypto.subtle.digest('SHA-1', all))].map(x => x.toString(16).padStart(2, '0')).join('');
   } catch { return ''; } // no crypto.subtle outside https/localhost: no update check
 }
+// how many sentences have their English (« EN » in Mes épisodes); null when none
+function podEnCount(tr) {
+  const segs = Array.isArray(tr && tr.segs) ? tr.segs.filter(g => g && typeof g.t === 'string' && g.t.trim()) : [];
+  const done = segs.filter(g => typeof g.en === 'string' && g.en.trim()).length;
+  return done ? { done, total: segs.length } : null;
+}
 async function importPodcastJson(file) {
   let tr; try { tr = JSON.parse(await file.text()); } catch { throw new Error('ce fichier JSON est illisible'); }
   if (!podIsTranscript(tr)) throw new Error('ce fichier JSON n’est pas une transcription de podcast (champs « v » et « segs » attendus)');
   if (+tr.v > 1) throw new Error('cette transcription vient d’une version plus récente : recharge l’appli');
-  const n = nameParts(file.name), last = tr.segs.length ? +tr.segs[tr.segs.length - 1].e || 0 : 0;
+  const n = nameParts(file.name), last = tr.segs.length ? +tr.segs[tr.segs.length - 1].e || 0 : 0, sha = await gitSha(file);
   return { format: 'podcast', title: String(tr.title || n.title).trim(), author: String(tr.showTitle || tr.show || '').trim(), isbn: '', publisher: '', date: String(tr.date || ''), lang: 'zh', description: '', cover: null,
-    pod: { show: String(tr.show || 'local'), key: String(tr.key || n.title), audio: httpURL(tr.audio), dur: +tr.dur || last, made: String(tr.made || ''), engine: String(tr.engine || ''), clip: tr.clip == null ? null : +tr.clip },
-    sha: await gitSha(file) };
+    pod: { show: String(tr.show || 'local'), key: String(tr.key || n.title), audio: httpURL(tr.audio), dur: +tr.dur || last, made: String(tr.made || ''), engine: String(tr.engine || ''), clip: tr.clip == null ? null : +tr.clip, en: podEnCount(tr), sha },
+    sha };
 }
 // speakers by order of first appearance: 甲 乙 丙 丁…, one colour each (tone colours first: they follow the theme)
 const SPK = '甲乙丙丁戊己庚辛壬癸', SPK_C = ['var(--t4)', 'var(--t1)', 'var(--t3)', 'var(--t2)', '#8E5BB8', '#2F8F9D', '#B5651D', '#5B7B2E', '#C2417A', '#777'];
@@ -1546,13 +1570,18 @@ function podChip(t, sp) {
   if (sp != null) { a['data-sp'] = SPK[sp] || String(sp + 1); a.style = `--spc:${SPK_C[sp % SPK_C.length]}`; a.title = `Locuteur ${sp + 1}`; }
   return h('button', a);
 }
-async function parsePodcastForReading(blob) {
+// « Lignes » (one row per sentence, with pinyin and English lines) or « Texte » (paragraphs); the reader's choice is kept
+// per device, else Lignes when the episode has English
+const podLayoutFor = hasEn => settings.podLayout === 'lines' || settings.podLayout === 'text' ? settings.podLayout : hasEn ? 'lines' : 'text';
+async function parsePodcastForReading(blob, layout) {
   let tr; try { tr = JSON.parse(await blob.text()); } catch { throw new Error('transcription illisible'); }
   if (!podIsTranscript(tr)) throw new Error('ce fichier n’est pas une transcription de podcast');
   // ct must have one value per UTF-16 unit of t (contract); otherwise it is ignored rather than trusted
   const segs = tr.segs.filter(g => g && typeof g.t === 'string' && g.t.trim() && isFinite(g.s))
-    .map(g => ({ s: +g.s, e: isFinite(g.e) && +g.e >= +g.s ? +g.e : +g.s, sp: Number.isInteger(g.sp) && g.sp >= 0 ? g.sp : null, t: g.t, ct: Array.isArray(g.ct) && g.ct.length === g.t.length ? g.ct : null }))
+    .map(g => ({ s: +g.s, e: isFinite(g.e) && +g.e >= +g.s ? +g.e : +g.s, sp: Number.isInteger(g.sp) && g.sp >= 0 ? g.sp : null, t: g.t, ct: Array.isArray(g.ct) && g.ct.length === g.t.length ? g.ct : null,
+      en: typeof g.en === 'string' && g.en.trim() ? g.en.trim() : '' }))
     .sort((a, b) => a.s - b.s); // binary search by time needs them in order
+  const hasEn = segs.some(g => g.en), lines = (layout || podLayoutFor(hasEn)) === 'lines';
   const end = Math.max(+tr.dur || 0, segs.length ? segs[segs.length - 1].e : 0);
   const multi = (+tr.speakers || 0) > 1 || new Set(segs.map(g => g.sp).filter(x => x != null)).size > 1;
   let chaps = (Array.isArray(tr.chapters) ? tr.chapters : []).filter(c => c && isFinite(c.t)).map(c => ({ t: Math.max(0, +c.t), title: String(c.title || '').trim() }))
@@ -1570,20 +1599,32 @@ async function parsePodcastForReading(blob) {
     if (!ci) sec.append(h('div', { class: 'pod-meta', 'data-note': meta }));
     // the heading's own text is only the show-notes title (real text); the time and "Début" are generated content
     sec.append(h('h2', { class: 'chap-head pod-h' }, podChip(c.t, null), c.title || (c.start ? h('span', { class: 'plab', 'data-l': 'Début' }) : null)));
-    let p = null, plen = 0, prev = null;
+    let p = null, plen = 0, prev = null, spSeen = null;
     // a sentence starting half a second before a mark belongs to the next chapter (marks are rounded to the second)
     while (j < segs.length && segs[j].s < until - 0.5) {
       const g = segs[j];
       const brk = !p || (multi && g.sp != null && prev.sp != null && g.sp !== prev.sp) || g.s - prev.e > 1.2 || (plen > 140 && ENDS.test(prev.t.trim())) || plen > 400;
-      if (brk) { p = h('p', { class: 'pp' }, podChip(g.s, multi ? g.sp : null)); sec.append(p); plen = 0; }
-      const el = h('span', { class: 'pseg', 'data-i': j }, g.t); p.append(el); els[j] = el; plen += g.t.length; prev = g; j++;
+      const el = h('span', { class: 'pseg', 'data-i': j }, g.t); els[j] = el;
+      if (lines) {
+        // Lignes: the same paragraphs (one <div> each, so the chapter has as many children as in Texte and is cut into the
+        // same sections), one row per sentence. The pinyin and English lines are empty elements drawn from attributes
+        // (CSS generated content, like the chips): no text node, so no text walker, count, search or popup ever sees them
+        if (brk) { p = h('div', { class: 'lgrp' }); sec.append(p); plen = 0; }
+        const spMark = multi && g.sp != null && g.sp !== spSeen; if (g.sp != null) spSeen = g.sp;
+        p.append(h('p', { class: 'lrow', 'data-i': j }, podChip(g.s, spMark ? g.sp : null), el, h('span', { class: 'lpy', 'aria-hidden': 'true' }),
+          g.en ? h('span', { class: 'len', 'data-en': g.en, lang: 'en' }) : null));
+      } else {
+        if (brk) { p = h('p', { class: 'pp' }, podChip(g.s, multi ? g.sp : null)); sec.append(p); plen = 0; }
+        p.append(el);
+      }
+      plen += g.t.length; prev = g; j++;
     }
     sections.push({ el: sec });
     toc.push({ title: c.title ? `${mmss(c.t)} ${c.title}` : c.start ? 'Début' : mmss(c.t), s: sections.length - 1, level: 0, t: c.t });
   });
   const r = finishBook(sections, toc, [], new Map(), true);
   const { segs: _drop, ...m } = tr;
-  r.pod = { meta: Object.assign(m, { dur: end }), segs, els };
+  r.pod = { meta: Object.assign(m, { dur: end }), segs, els, hasEn, lines };
   return r;
 }
 
@@ -2225,9 +2266,11 @@ async function openBook(id) {
   try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
   if (my !== openSeq) return;
   addPrepButtons();
+  linesApply(); // before the position: the rows' heights depend on the pinyin / English switches
   restorePos();
   if (settings.pinyin) startPinyin();
   if (settings.vocabHl) VH.start();
+  LP.start();
 }
 function closeReader(silent, opening) {
   if (!opening) openSeq++; // a book still loading must not reopen the reader
@@ -2235,6 +2278,7 @@ function closeReader(silent, opening) {
   $('#book').classList.remove('cv');
   VH.stop(); Goal.reset(); $('#r-pct').hidden = true;
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
+  LP.stop(); $('#book').classList.remove('lines', 'l-nopy', 'l-en-tap', 'l-en-off');
   if (R.book) savePos(true);
   endPeek(); R.pending = null; ttsStop(true); paStop();
   hidePop();
@@ -2730,6 +2774,23 @@ function showSettings() {
     return h('div', { class: 'seg' }, h('button', { 'aria-label': 'Pinyin plus petit', onclick: () => step(-0.05) }, 'pīn −'), h('button', { 'aria-label': 'Pinyin plus grand', onclick: () => step(0.05) }, 'pīn +'), lab);
   }
   const sz = h('span', { class: 'muted', style: 'align-self:center;font-variant-numeric:tabular-nums' }, settings.size + ' px'); size.append(sz);
+  // episode: Texte / Lignes, and in Lignes the pinyin and English lines (also in the audio bar, as two quick toggles)
+  function lineSet() {
+    const box = h('div', { class: 'set-group', id: 'set-lines' });
+    const draw = () => {
+      const p = R.data && R.data.pod; if (!p) return;
+      const note = t => h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, t);
+      box.replaceChildren(...[h('h3', null, 'Épisode : présentation'),
+        h('div', { class: 'seg' }, [['text', 'Texte'], ['lines', 'Lignes']].map(([v, l]) => h('button', { 'data-lsw': 'lay:' + v, onclick: async () => { await podRelayout(v); draw(); } }, l))),
+        p.lines ? h('div', { class: 'seg' }, h('button', { 'data-lsw': 'py', onclick: () => setPodLines('py', !settings.podPy) }, 'Pinyin')) : null,
+        p.lines && settings.pinyin ? note('La ligne de pinyin est masquée tant que le pinyin (pīn) est au-dessus des caractères.') : null,
+        p.lines && p.hasEn ? h('div', { class: 'seg', role: 'group', 'aria-label': 'Anglais' }, h('span', { class: 'muted', style: 'align-self:center;padding-right:4px' }, 'English'),
+          [['show', 'Affiché'], ['tap', 'Toucher pour voir'], ['off', 'Off']].map(([v, l]) => h('button', { 'data-lsw': 'en:' + v, onclick: () => setPodLines('en', v) }, l))) : null,
+        note(p.lines ? 'Lignes : une ligne par phrase, avec le pinyin et l’anglais (traduction automatique, non relue) en dessous.' : 'Texte : la transcription en paragraphes.')].filter(Boolean));
+      linesApply(box);
+    };
+    draw(); return box;
+  }
   const d = h('aside', { class: 'drawer right', 'aria-label': 'Affichage' },
     h('header', null, h('h2', null, 'Affichage'), h('button', { class: 'icon-btn', 'aria-label': 'Fermer', onclick: () => close() }, '✕')),
     h('div', { class: 'body' },
@@ -2741,6 +2802,7 @@ function showSettings() {
         pySizeCtl(),
         seg('pyPos', [['under', 'En dessous'], ['over', 'Au-dessus']]),
         seg('pyColor', [['mono', 'Neutre'], ['tones', 'Couleurs des tons']])),
+      isEp(R.book) && R.data && R.data.pod ? lineSet() : null,
       h('div', { class: 'set-group' }, h('h3', null, 'Surligner mes mots de ce livre'),
         seg('vocabHl', [[false, 'Non'], ['chapter', 'Ce chapitre'], ['book', 'Ce livre'], ['all', 'Toute la bibliothèque']], v => { settings.vocabHl = v; applySettings(); VH.stop(); if (v) VH.start(); }),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Ce chapitre : les mots ajoutés dans le chapitre, surlignés dans ce chapitre. Ce livre : ta liste du livre, partout. Toute la bibliothèque : tous tes mots, quel que soit le livre. Chaque mot garde sa couleur pastel.')),
@@ -3058,6 +3120,8 @@ document.addEventListener('mousemove', e => {
 $('#book').addEventListener('click', e => {
   const chip = e.target.closest('.pchip'); // podcast time chip: play from there
   if (chip) { e.preventDefault(); hidePop(); paFrom(+chip.dataset.t); return; }
+  const en = e.target.closest('.len'); // Lignes, « toucher pour voir »: the English of this row, like a flashcard
+  if (en) { e.preventDefault(); hidePop(); if ($('#book').classList.contains('l-en-tap')) en.classList.toggle('open'); return; }
   const a = e.target.closest('a[data-go]');
   if (a) {
     e.preventDefault(); const si = R.data.pathIndex.get(a.dataset.go); const k = R.data.sections.findIndex(s => s.spine === si); if (k < 0) return;
@@ -3257,7 +3321,8 @@ function cvMetrics() {
 }
 function cvRaw(sec, m) {
   let px = sec.el.classList.contains('starts') ? 2.5 * m.fs : 0;
-  for (const n of sec.bl || [0]) px += Math.ceil((n + 2) * m.fs / m.w) * m.lh + .55 * m.fs;
+  const ln = R.data && R.data.pod && R.data.pod.lines; // Lignes: a pinyin line and an English line under each sentence
+  for (const n of sec.bl || [0]) px += ln ? Math.ceil((n + 2) * m.fs / (m.w - 44)) * 1.7 * m.fs + 2.6 * m.fs : Math.ceil((n + 2) * m.fs / m.w) * m.lh + .55 * m.fs;
   return px;
 }
 function cvSetup() {
@@ -3340,6 +3405,7 @@ function setPinyin(on) {
   settings.pinyin = !!on; applySettings(); hidePop();
   if (TTS.on) { TTS.sents = null; TTS.si = 0; }
   if (on) startPinyin(); else stopPinyin();
+  linesApply(); LP.start(); // the pinyin line is hidden under the pīn mode (redundant), and filled again after it
   onScroll();
 }
 $('#r-py').addEventListener('click', () => setPinyin(!settings.pinyin));
@@ -3744,6 +3810,9 @@ function paMark(i, force) {
   const el = PA.els[i];
   const hl = !!(window.Highlight && CSS.highlights);
   $$('.pseg.now', $('#book')).forEach(x => x !== el && x.classList.remove('now'));
+  const row = el && el.parentElement.closest('.lrow'); // Lignes: the whole row of the sentence being said
+  $$('.lrow.now', $('#book')).forEach(x => x !== row && x.classList.remove('now'));
+  if (row) row.classList.add('now');
   if (!el) { try { hl && CSS.highlights.delete('tts'); } catch {} return; }
   // the range is anchored outside the span: pinyin mode rewrites what is inside
   try { if (hl) { const r = document.createRange(); r.setStartBefore(el); r.setEndAfter(el); CSS.highlights.set('tts', new Highlight(r)); } else el.classList.add('now'); } catch { el.classList.add('now'); }
@@ -3775,7 +3844,7 @@ function paStop() {
   paSave(true); PA.want = false; clearTimeout(PA.repWait); PA.repWait = 0; cancelAnimationFrame(PA.raf);
   if (PA.el) { PA.src = ''; PA.el.pause(); PA.el.removeAttribute('src'); try { PA.el.load(); } catch {} } // stops the download too
   try { PA.lock && PA.lock.release(); PA.lock = null; } catch {}
-  if (PA.host === 'reader') { try { CSS.highlights && CSS.highlights.delete('tts'); } catch {} $$('.pseg.now').forEach(x => x.classList.remove('now')); $('#tts-in').classList.remove('pa'); $('#tts-in').replaceChildren(); $('#r-tts').setAttribute('aria-pressed', 'false'); }
+  if (PA.host === 'reader') { try { CSS.highlights && CSS.highlights.delete('tts'); } catch {} $$('.pseg.now, .lrow.now').forEach(x => x.classList.remove('now')); $('#tts-in').classList.remove('pa'); $('#tts-in').replaceChildren(); $('#r-tts').setAttribute('aria-pressed', 'false'); }
   if (host) host.hidden = true;
   const ms = navigator.mediaSession; if (ms) { try { ms.metadata = null; } catch {} for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack']) try { ms.setActionHandler(a, null); } catch {} }
   Object.assign(PA, { host: '', id: '', segs: null, els: null, cur: -1, rep: -1, err: '', ui: null });
@@ -3803,10 +3872,12 @@ function paDraw() {
       seg ? b('Répéter la phrase', '🔁', paToggleRepeat, { 'aria-pressed': String(PA.rep >= 0) }) : null,
       seg && book ? b('Lire à partir de l’écran', 'Ici', () => { PA.userAt = 0; const i = paVisibleIndex(); if (PA.rep >= 0) PA.rep = i; paSeek(PA.segs[i].s, true); }) : null,
       h('button', { class: 'icon-btn', 'aria-label': 'Fermer le lecteur audio', title: 'Fermer', onclick: () => paStop() }, '✕')),
-    h('div', { class: 'pa-row' }, time, seek),
+    h('div', { class: 'pa-row' }, time, seek,
+      book && R.data && R.data.pod && R.data.pod.lines ? [b('Ligne de pinyin', 'Py', () => setPodLines('py', !settings.podPy), { class: 'btn small pa-b pa-t', 'data-lsw': 'py' }),
+        R.data.pod.hasEn ? b('Anglais', 'EN', () => setPodLines('en', settings.podEn === 'off' ? settings.podEnLast || 'show' : 'off'), { class: 'btn small pa-b pa-t', 'data-lsw': 'en' }) : null] : null),
     PA.err ? h('div', { class: 'msg', role: 'status' }, PA.err) : null].filter(Boolean));
   PA.ui = { play, time, seek };
-  paUi();
+  paUi(); if (book) linesApply();
 }
 function paUi() {
   const u = PA.ui; if (!u) return;
@@ -3814,6 +3885,123 @@ function paUi() {
   u.play.textContent = PA.want ? '❚❚' : '▶'; u.play.setAttribute('aria-label', PA.want ? 'Pause' : 'Lire'); u.play.title = PA.want ? 'Pause' : 'Lire';
   if (!PA.seeking) { u.time.textContent = `${mmss(t)} / ${mmss(PA.dur)}`; u.seek.max = Math.max(1, Math.round(PA.dur)); u.seek.value = Math.round(t); }
   try { navigator.mediaSession && (navigator.mediaSession.playbackState = PA.want ? 'playing' : 'paused'); } catch {}
+}
+
+/* ================= podcast « Lignes »: pinyin and English lines, their switches ================= */
+// textbook pinyin of a sentence: words joined (dàjiā hǎo, huānyíng…), tone marks, punctuation kept (full-width → ASCII)
+const PY_PUN = { '，': [',', 'c'], '。': ['.', 'c'], '！': ['!', 'c'], '？': ['?', 'c'], '、': [',', 'c'], '；': [';', 'c'], '：': [':', 'c'], '…': ['…', 'c'], '～': ['~', 'c'],
+  ',': [',', 'c'], '.': ['.', 'c'], '!': ['!', 'c'], '?': ['?', 'c'], ';': [';', 'c'], ':': [':', 'c'], '”': ['”', 'c'], '’': ['’', 'c'], '」': ['”', 'c'], '』': ['’', 'c'], '）': [')', 'c'], ')': [')', 'c'], '》': ['»', 'c'], '】': [']', 'c'], '〉': ['›', 'c'],
+  '“': ['“', 'o'], '‘': ['‘', 'o'], '「': ['“', 'o'], '『': ['‘', 'o'], '（': ['(', 'o'], '(': ['(', 'o'], '《': ['«', 'o'], '【': ['[', 'o'], '〈': ['‹', 'o'],
+  '·': ['·', 'j'], '•': ['·', 'j'], '-': ['-', 'j'], '—': ['—', 'd'], '–': ['–', 'd'] };
+function pyWord(w, nw) {
+  const ps = pinyinForWord(w, nw) || [];
+  if (ps.length !== w.length) return ps.filter(Boolean).map((p, k) => (k && /^[aeo]/i.test(p) ? "'" : '') + syllable(p).text).join('') || w;
+  let out = '';
+  for (let k = 0; k < w.length; k++) {
+    if (!ps[k]) { out += w[k]; continue; }
+    const y = syllable(ps[k]).text; if (out && /^[aeoāáǎàēéěèōóǒò]/i.test(y)) out += "'"; out += y;
+  }
+  return out;
+}
+function pyLine(text) {
+  const isTrad = bookIsTrad(), toks = [], re = /[㐀-䶿一-鿿豈-﫿〇]+/g; let last = 0, m;
+  const other = str => { for (const x of str.match(/[A-Za-z0-9]+|\S/g) || []) { const p = PY_PUN[x]; toks.push(p ? { t: p[0], k: p[1] } : { t: x, k: 'w' }); } };
+  while ((m = re.exec(text))) {
+    other(text.slice(last, m.index)); last = m.index + m[0].length;
+    const run = m[0], ns = normZh(run, isTrad);
+    if (Words.ready) for (const [a, b] of segment(ns)) toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b)), k: 'w' });
+    else for (let i = 0; i < run.length;) { // no word list: longest dictionary match
+      let L = 1; for (let n = Math.min(Dict.maxLen, run.length - i); n > 1; n--) if (Dict.entries(ns.slice(i, i + n))) { L = n; break; }
+      toks.push({ t: pyWord(run.slice(i, i + L), ns.slice(i, i + L)), k: 'w' }); i += L;
+    }
+  }
+  other(text.slice(last));
+  let out = '', prev = '';
+  for (const x of toks) { if (out && x.k !== 'c' && x.k !== 'j' && prev !== 'o' && prev !== 'j') out += ' '; out += x.t; prev = x.k; }
+  return out;
+}
+// the sentence's own text (not the pinyin of the pīn mode, which lives in <rt>)
+function segText(el) { const tw = textWalker(el); let s = '', n; while ((n = tw.nextNode())) s += n.data; return s; }
+// pinyin lines are filled when their chapter comes near the screen: the rows on screen at once, the others when idle
+const LP = { obs: null, gen: 0, q: new Set(), busy: false,
+  need() { return !!(R.data && R.data.pod && R.data.pod.lines && settings.podPy && !settings.pinyin); },
+  stop() { this.gen++; this.obs && this.obs.disconnect(); this.obs = null; this.q.clear(); },
+  start() {
+    this.stop(); if (!this.need()) return;
+    const my = this.gen, data = R.data;
+    const go = () => {
+      if (my !== this.gen || R.data !== data) return;
+      this.obs = new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) this.add(e.target); }, { rootMargin: '2500px 0px' });
+      data.sections.forEach(x => this.obs.observe(x.el));
+    };
+    if (Dict.ready && Words.ready) go();
+    else { ensureDict(); Dict.load().then(() => Words.load().catch(() => {})).then(go).catch(() => {}); }
+  },
+  fill(el) { if (el.dataset.py == null && el.isConnected) el.dataset.py = pyLine(segText(el.previousElementSibling)); },
+  add(sec) {
+    const rows = $$('.lpy:not([data-py])', sec); if (!rows.length) return;
+    // reads first, then writes (one layout, not one per row)
+    const now = rows.filter(el => { const r = el.getBoundingClientRect(); return r.bottom > -innerHeight && r.top < innerHeight * 2; });
+    now.forEach(el => this.fill(el));
+    rows.forEach(el => { if (el.dataset.py == null) this.q.add(el); });
+    this.pump();
+  },
+  pump() {
+    if (this.busy || !this.q.size) return; this.busy = true; const my = this.gen;
+    const idle = window.requestIdleCallback ? f => requestIdleCallback(f, { timeout: 500 }) : f => setTimeout(f, 30);
+    idle(dl => { this.busy = false; if (my !== this.gen) return; const t0 = performance.now();
+      for (const el of this.q) { this.q.delete(el); this.fill(el); if (dl && dl.timeRemaining ? dl.timeRemaining() < 6 : performance.now() - t0 > 8) break; }
+      this.pump(); });
+  }
+};
+// classes on #book for the switches (no re-render: the lines are only shown or hidden)
+function linesApply(root) {
+  const b = $('#book'), on = !!(R.data && R.data.pod && R.data.pod.lines);
+  b.classList.toggle('lines', on);
+  b.classList.toggle('l-nopy', on && !settings.podPy);
+  b.classList.toggle('l-en-tap', on && settings.podEn === 'tap');
+  b.classList.toggle('l-en-off', on && settings.podEn === 'off');
+  $$('[data-lsw]', root || document).forEach(x => {
+    const k = x.dataset.lsw;
+    if (k === 'py') { x.setAttribute('aria-pressed', String(!!settings.podPy)); x.title = settings.pinyin ? 'Ligne de pinyin masquée : le pinyin est déjà au-dessus des caractères (mode pīn)' : settings.podPy ? 'Masquer la ligne de pinyin' : 'Afficher la ligne de pinyin'; }
+    else if (k === 'en') { x.setAttribute('aria-pressed', String(settings.podEn !== 'off')); x.title = settings.podEn === 'off' ? 'Afficher l’anglais' : 'Masquer l’anglais'; }
+    else if (k.startsWith('en:')) x.setAttribute('aria-pressed', String(settings.podEn === k.slice(3)));
+    else if (k.startsWith('lay:')) x.setAttribute('aria-pressed', String((R.data && R.data.pod && R.data.pod.lines ? 'lines' : 'text') === k.slice(4)));
+  });
+}
+function setPodLines(key, v) {
+  if (key === 'en' && v !== 'off') settings.podEnLast = v;
+  settings[key === 'py' ? 'podPy' : 'podEn'] = v; LS.set('settings', settings);
+  if (key === 'en') $$('#book .len.open').forEach(x => x.classList.remove('open')); // « toucher pour voir » starts hidden again
+  hidePop(); keepPlace(() => { linesApply(); cvEstimate(); });
+  if (key === 'py') LP.start();
+  onScroll();
+}
+// switch Texte ⇄ Lignes: the episode is laid out again; the sentence at the top of the screen stays there
+let relaying = null;
+async function podRelayout(layout) {
+  const b = R.book, d = R.data; if (!isEp(b) || !d || !d.pod || relaying) return;
+  settings.podLayout = layout; LS.set('settings', settings);
+  if ((d.pod.lines ? 'lines' : 'text') === layout) { linesApply(); return; }
+  relaying = (async () => {
+    const i = paVisibleIndex(), r0 = d.pod.els[i] ? d.pod.els[i].getBoundingClientRect().top : 0;
+    const f = await DB.get('files', b.id); if (!f || R.book !== b) return;
+    const nd = await parsePodcastForReading(f.blob, layout); if (R.book !== b || R.data !== d) return;
+    hidePop(); LP.stop(); pyObs && pyObs.disconnect(); pyObs = null; const vh = VH.on; VH.stop();
+    R.data = nd; TTS.blocks = null; Goal.reset();
+    const bookEl = $('#book'); bookEl.classList.remove('py-on');
+    cvSetup();
+    bookEl.replaceChildren(...nd.sections.map(x => x.el), h('div', { class: 'book-end' }, 'Fin de l’épisode'));
+    addPrepButtons(); linesApply();
+    if (PA.host === 'reader') { PA.segs = nd.pod.segs; PA.els = nd.pod.els; paDraw(); paMark(PA.cur, false); }
+    const go = () => { const el = nd.pod.els[i]; if (el) window.scrollTo(0, el.getBoundingClientRect().top + scrollY - r0); };
+    go(); cvEstimate(); go();
+    if (settings.pinyin) startPinyin();
+    if (vh) VH.start();
+    LP.start();
+    requestAnimationFrame(() => { go(); onScroll(); });
+  })();
+  try { await relaying; } finally { relaying = null; }
 }
 
 /* ================= example sentences ================= */
@@ -4221,6 +4409,17 @@ const Sync = {
           else if (!loc.cover && byName.has(cn)) { const cover = await (await this.download(byName.get(cn).id)).blob(); await DB.patch('books', b.id, { cover }); const old = coverURLs.get(b.id); if (old) { URL.revokeObjectURL(old); coverURLs.delete(b.id); } changed = true; }
           const fn = `book-${b.id}.${b.format}`;
           if (localFiles.has(b.id) && !byName.has(fn)) { this.setStatus(`Envoi de « ${b.title} »…`); const f = await DB.get('files', b.id); if (f) await this.upload(fn, f.blob, this.mime(b.format)); }
+          // an episode updated on another device (« Mettre à jour », e.g. English added): its record names the new transcript
+          else if (isEp(b) && b.pod && b.pod.sha && localFiles.has(b.id) && byName.has(fn)) {
+            const f = await DB.get('files', b.id), have = f && (f.sha || await gitSha(f.blob));
+            if (have && have !== b.pod.sha) {
+              const blob = await (await this.download(byName.get(fn).id)).blob(), got = await gitSha(blob);
+              if (got === b.pod.sha) { // else the Drive copy is not the new one yet: next sync
+                await DB.put('files', { id: b.id, blob: new Blob([blob], { type: 'application/json' }), sha: got }); await DB.del('kv', 'text:' + b.id);
+                await DB.patch('books', b.id, { stats: undefined }); StatsQ.add(b.id); changed = true;
+              }
+            }
+          }
         } catch (e) { console.warn('sync file', b.id, e); failed++; if (/reconnexion/.test(e.message)) throw e; }
       }
       for (const id of Object.keys(tomb)) for (const nm of ['epub', 'txt', 'pdf', 'mobi', 'fb2', 'docx', 'html', 'podcast'].map(f => `book-${id}.${f}`).concat(`cover-${id}.jpg`)) if (byName.has(nm)) await this.g(`${DRIVE}/${byName.get(nm).id}`, { method: 'DELETE' }).catch(() => {});
@@ -4467,6 +4666,10 @@ async function renderPodNow() {
   Pod.refreshTab(eps.length > 0);
   const vn = {}; vocab.forEach(v => { vn[v.bookId] = (vn[v.bookId] || 0) + 1; });
   const byKey = new Map(eps.map(b => [epKey(b), b]));
+  // episodes stored before the English existed in the contract: count it once from the stored file
+  for (const b of eps) if (b.pod && !('en' in b.pod) && local.has(b.id)) {
+    try { const f = await DB.get('files', b.id); b.pod.en = podEnCount(JSON.parse(await f.blob.text())); await DB.patch('books', b.id, { pod: b.pod }); } catch { b.pod.en = null; }
+  }
   // local transcript hashes, for the "Mettre à jour" check (computed once per stored file)
   const shaOf = async b => { if (!local.has(b.id)) return ''; const f = await DB.get('files', b.id); if (!f) return ''; if (!f.sha) { f.sha = await gitSha(f.blob); if (f.sha) DB.put('files', f).catch(() => {}); } return f.sha; };
   const root = $('#pod-main'); const parts = [];
@@ -4489,6 +4692,8 @@ async function renderPodNow() {
           h('button', { class: 'btn small primary', onclick: () => openBook(b.id) }, b.progress > 0.01 ? `Reprendre (${Math.round(b.progress * 100)} %)` : 'Ouvrir'),
           n ? h('button', { class: 'btn small', onclick: () => showVocab({ bookId: b.id }) }, 'Vocabulaire') : null,
           !local.has(b.id) ? h('span', { class: 'pill toread', title: 'La transcription est sur Google Drive ; elle sera téléchargée à l’ouverture' }, '☁ Drive') : null,
+          b.pod && b.pod.en ? h('span', { class: 'pill', title: b.pod.en.done >= b.pod.en.total ? 'Avec l’anglais de chaque phrase (traduction automatique, non relue)' : `Anglais pour ${b.pod.en.done} phrases sur ${b.pod.en.total} (traduction en cours)` },
+            b.pod.en.done >= b.pod.en.total ? 'EN' : `EN ${b.pod.en.done}/${b.pod.en.total}`) : null,
           h('button', { class: 'btn small ghost danger', onclick: () => podAskDelete(b, n) }, 'Supprimer'))));
   })));
   // ---- the show's feed ----
