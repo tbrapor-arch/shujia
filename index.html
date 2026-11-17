@@ -127,6 +127,32 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .pod-ep .st { font-size: 12.5px; color: var(--accent); }
 .pod-ep .st.bad { color: var(--seal); }
 .pod-msg { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.pod-ep.rd { cursor: pointer; }
+@media (hover: hover) { .pod-ep.rd:hover h3 a { color: var(--accent) !important; } }
+.pod-ep.busy { cursor: progress; }
+.pod-ep.busy .pplay { position: relative; }
+.pod-ep.busy .pplay::after { content: ""; position: absolute; inset: -2px; border-radius: 99px; border: 2px solid var(--accent); border-top-color: transparent; animation: podspin 1s linear infinite; }
+@keyframes podspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pod-ep.busy .pplay::after { animation: none; border-top-color: var(--accent); } }
+.pod-ep.dim h3, .pod-ep.dim .m { color: var(--muted); }
+.pod-ep.dim h3 { font-weight: 500; }
+.pod-ep .st.re:empty { display: none; }
+.pod-ep { position: relative; }
+.pod-ep.has-menu h3 { padding-right: 34px; }
+.pmenu { position: absolute; top: 6px; right: -6px; }
+.pmenu summary { list-style: none; cursor: pointer; width: 40px; height: 36px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); font-size: 18px; line-height: 1; user-select: none; }
+.pmenu summary::-webkit-details-marker { display: none; }
+.pmenu summary:hover, .pmenu[open] summary { background: var(--accent-soft); color: var(--accent); }
+.pmenu-l { position: absolute; right: 0; top: 40px; z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 6px; white-space: nowrap; }
+.pod-sec { margin: 0 0 18px; }
+.pod-h, .pod-sh { font-family: var(--f-serif); font-size: 18px; margin: 4px 0 6px; }
+.pod-sh { display: flex; align-items: baseline; gap: 10px; }
+.pod-sh .n { font-family: var(--f-sans, inherit); font-size: 12.5px; font-weight: 400; color: var(--muted); }
+details.pod-sec > summary { list-style: none; cursor: pointer; border-bottom: 1px solid var(--line); }
+details.pod-sec > summary::-webkit-details-marker { display: none; }
+details.pod-sec > summary .pod-sh::before { content: "▸"; font-size: 13px; color: var(--muted); width: 12px; display: inline-block; transition: transform .15s; }
+details.pod-sec[open] > summary .pod-sh::before { transform: rotate(90deg); }
+details.pod-sec:not([open]) { margin-bottom: 4px; }
 .pod-msg.bad { color: var(--seal); }
 #pod .tts { z-index: 45; }
 #pod:has(#pod-bar:not([hidden])) { padding-bottom: 180px; } /* the last episode stays reachable above the player */
@@ -1027,7 +1053,8 @@ async function importFilesNow(files) {
       const all = await DB.all('books');
       const existing = ep ? all.find(b => isEp(b) && b.pod.show === meta.pod.show && b.pod.key === meta.pod.key) : all.find(b => !isEp(b) && b.title === meta.title && b.size === file.size);
       if (existing) { toast(ep ? `« ${meta.title} » est déjà dans tes épisodes.` : `« ${meta.title} » est déjà dans ta bibliothèque.`); continue; }
-      const book = Object.assign({ id: uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: ep ? meta.pod.key + '.json' : file.name, sample: !!file.sample }, meta);
+      if (ep) podSetRemoved(`${meta.pod.show}/${meta.pod.key}`, false);
+      const book = Object.assign({ id: ep ? podId(meta.pod.show, meta.pod.key) : uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: ep ? meta.pod.key + '.json' : file.name, sample: !!file.sample }, meta);
       if (ep) await DB.put('files', { id: book.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha }); else await DB.put('files', { id: book.id, blob: file });
       delete book.sha;
       if (pdfText != null) await DB.put('kv', { k: 'pdftext:' + book.id, v: 1, text: pdfText });
@@ -1539,7 +1566,7 @@ const fmtDur = s => { s = +s || 0; if (s < 3600) return Math.max(1, Math.round(s
 const fmtDay = d => { const x = /^\d{4}-\d{2}-\d{2}/.test(d || '') ? new Date(d.slice(0, 10) + 'T12:00') : null; return x && !isNaN(x) ? x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : (d || ''); };
 const podIsTranscript = tr => !!tr && typeof tr === 'object' && tr.v != null && Array.isArray(tr.segs);
 const httpURL = u => { const x = safeURL(u); return x && /^https?:/i.test(x) ? x : ''; };
-// git's blob hash of the stored file: compared with the repo's listing to offer "Mettre à jour" (the feed carries no transcript date)
+// git's blob hash of the stored file: compared with the repo's listing to replace a changed transcript (the feed carries no transcript date)
 async function gitSha(blob) {
   try {
     const b = new Uint8Array(await blob.arrayBuffer()), head = new TextEncoder().encode(`blob ${b.length}\0`), all = new Uint8Array(head.length + b.length);
@@ -1547,7 +1574,7 @@ async function gitSha(blob) {
     return [...new Uint8Array(await crypto.subtle.digest('SHA-1', all))].map(x => x.toString(16).padStart(2, '0')).join('');
   } catch { return ''; } // no crypto.subtle outside https/localhost: no update check
 }
-// how many sentences have their English (« EN » in Mes épisodes); null when none
+// how many sentences have their English (« EN » in the Podcasts tab); null when none
 function podEnCount(tr) {
   const segs = Array.isArray(tr && tr.segs) ? tr.segs.filter(g => g && typeof g.t === 'string' && g.t.trim()) : [];
   const done = segs.filter(g => typeof g.en === 'string' && g.en.trim()).length;
@@ -1726,7 +1753,7 @@ async function saveSheet(b) {
 }
 async function showDetails(id) {
   const b = await DB.get('books', id); if (!b) return;
-  if (isEp(b)) { showPodcasts(); return; } // an episode has no book sheet: it is managed in « Mes épisodes »
+  if (isEp(b)) { showPodcasts(); return; } // an episode has no book sheet: it is managed in the Podcasts tab
   const n = (await DB.byBook(id)).length;
   const save = async () => { await saveSheet(b); renderLibrary(); };
   const q = encodeURIComponent(b.isbn || `${b.title} ${b.author}`);
@@ -2029,7 +2056,7 @@ const StatsQ = {
           const fresh = await DB.get('books', id); if (!fresh) continue;
           fresh.stats = st; await DB.put('books', fresh, { touch: false });
           if (R.book && R.book.id === id) R.book.stats = st;
-          renderLibrary();
+          if (isEp(fresh)) { if (!$('#pod').hidden) renderPod(); } else renderLibrary();
         } catch (e) { console.warn('stats', e); this.failed.add(id); }
       }
     } finally { this.running = false; }
@@ -2244,8 +2271,10 @@ async function openBook(id) {
   const book = await DB.get('books', id); let file = await DB.get('files', id);
   if (book && !file && Sync.enabled() && !Sync.connected() && Sync.clientId()) { try { await Sync.login(); } catch {} }
   if (book && !file && Sync.connected()) { toast('Téléchargement du livre depuis Google Drive…'); try { file = await Sync.fetchBookFile(book); } catch (e) { console.error(e); } }
+  // an episode whose transcript is neither here nor on Drive: the private repo has it
+  if (book && !file && isEp(book) && Pod.token()) { try { file = await podFileFor(book); } catch (e) { console.warn(e); } }
   if (my !== openSeq) return; // another book was opened, or the reader closed, meanwhile
-  if (!book || !file) { toast(Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
+  if (!book || !file) { toast(isEp(book) && Pod.token() ? 'Transcription introuvable, y compris dans le dépôt (pas de connexion ?).' : Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
   closeReader(true, true);
   show('reader');
   const bookEl = $('#book'); bookEl.replaceChildren(h('div', { class: 'loading' }, 'Ouverture du livre…'));
@@ -2283,9 +2312,10 @@ function closeReader(silent, opening) {
   endPeek(); R.pending = null; ttsStop(true); paStop();
   hidePop();
   if (R.data) R.data.urls.forEach(u => URL.revokeObjectURL(u));
-  const wasEp = isEp(R.book);
+  const wasEp = isEp(R.book), wasId = R.book && R.book.id;
   R.book = null; R.data = null; TTS.blocks = null;
   $('#book').replaceChildren(); // free the closed book's DOM
+  if (wasEp && PV.deferred[wasId]) podApplyDeferred(wasId); // a newer transcript came while it was open
   if (!silent) { if (wasEp) showPodcasts(); else { show('lib'); renderLibrary(); } }
 }
 function restorePos() {
@@ -4363,18 +4393,29 @@ const Sync = {
       const remote = sf ? await (await this.download(sf.id)).json() : { v: 1, books: {}, vocab: {}, tomb: {} };
       const [lb0, lv0, tk] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.get('kv', 'tomb')]);
       const samples = new Set(lb0.filter(b => b.sample).map(b => b.id));
-      const lb = lb0.filter(b => !samples.has(b.id)), lv = lv0.filter(v => !samples.has(v.bookId)); // the built-in example stays on each device
+      let lb = lb0.filter(b => !samples.has(b.id)); const lv = lv0.filter(v => !samples.has(v.bookId)); // the built-in example stays on each device
       // podcast episodes travel in their own file, never in state.books: a device still on an older version of the app
       // (which knows no 'podcast' format) would show them as broken books and open the JSON as plain text
       const ef = byName.get('shujia-episodes.json');
       const remoteEps = ef ? ((await (await this.download(ef.id)).json()).eps || {}) : {}, remoteEpsWas = JSON.stringify(remoteEps);
       for (const [id, b] of Object.entries(remote.books || {})) if (isEp(b)) { remoteEps[id] = remoteEps[id] ? this.mergeBook(remoteEps[id], b) : b; delete remote.books[id]; }
+      // an episode only fetched from the repo (never opened, no words, no notes) stays off Drive: every device can fetch it
+      const withWords = new Set(lv.map(v => v.bookId));
+      const epKeep = b => (b.lastRead || 0) > 0 || (+b.progress || 0) > 0 || !!b.pos || withWords.has(b.id) || !!String(b.notes || '').trim() || (paPos.get(epKey(b)) || 0) > 0;
+      // such a local copy of an episode another device synced under another id: that record wins, the transcript moves to it
+      const remoteByKey = new Map(Object.values(remoteEps).filter(b => b && b.pod).map(b => [epKey(b), b.id]));
+      for (const b of lb.filter(isEp)) {
+        const rid = remoteByKey.get(epKey(b)); if (!rid || rid === b.id || epKeep(b) || lb.some(x => x.id === rid)) continue;
+        const f = await DB.get('files', b.id); if (f) await DB.put('files', Object.assign({}, f, { id: rid }));
+        await DB.del('books', b.id, { sync: true }); await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id);
+        lb = lb.filter(x => x.id !== b.id);
+      }
       const tomb = Object.assign({}, remote.tomb || {}); for (const [k, v] of Object.entries((tk && tk.map) || {})) tomb[k] = Math.max(tomb[k] || 0, v);
       const lbm = Object.fromEntries(lb.map(b => [b.id, b])), lvm = Object.fromEntries(lv.map(v => [v.id, v]));
       for (const rec of [...lb, ...lv, ...Object.values(remote.books || {}), ...Object.values(remoteEps), ...Object.values(remote.vocab || {})]) if (rec && tomb[rec.id] && (rec.updatedAt || 0) > tomb[rec.id]) delete tomb[rec.id];
       const books = {}, vocab = {}, eps = {};
       for (const id of new Set([...lb.filter(b => !isEp(b)).map(b => b.id), ...Object.keys(remote.books || {})])) if (!tomb[id]) books[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remote.books && remote.books[id]);
-      for (const id of new Set([...lb.filter(isEp).map(b => b.id), ...Object.keys(remoteEps)])) if (!tomb[id]) eps[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remoteEps[id]);
+      for (const id of new Set([...lb.filter(b => isEp(b) && epKeep(b)).map(b => b.id), ...Object.keys(remoteEps)])) if (!tomb[id]) eps[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remoteEps[id]);
       for (const id of new Set([...Object.keys(lvm), ...Object.keys(remote.vocab || {})])) { if (tomb[id]) continue; const a = lvm[id], b = remote.vocab && remote.vocab[id]; vocab[id] = !a ? b : !b ? a : ((b.updatedAt || 0) > (a.updatedAt || 0) ? b : a); }
       // apply deletions and newer records locally
       for (const id of Object.keys(tomb)) {
@@ -4388,6 +4429,7 @@ const Sync = {
         if (!loc || JSON.stringify(this.strip(loc)) !== JSON.stringify(b)) {
           const nb = Object.assign({}, b, { cover: loc ? loc.cover : null, stats: loc ? loc.stats : undefined });
           await DB.put('books', nb, { touch: false }); changed = true;
+          if (!loc && isEp(nb) && await DB.get('files', id)) StatsQ.add(id); // its transcript may be here already (moved from a local copy)
           if (R.book && R.book.id === id) { const keepPos = R.book.pos; Object.assign(R.book, nb, { pos: keepPos }); }
         }
       }
@@ -4409,7 +4451,7 @@ const Sync = {
           else if (!loc.cover && byName.has(cn)) { const cover = await (await this.download(byName.get(cn).id)).blob(); await DB.patch('books', b.id, { cover }); const old = coverURLs.get(b.id); if (old) { URL.revokeObjectURL(old); coverURLs.delete(b.id); } changed = true; }
           const fn = `book-${b.id}.${b.format}`;
           if (localFiles.has(b.id) && !byName.has(fn)) { this.setStatus(`Envoi de « ${b.title} »…`); const f = await DB.get('files', b.id); if (f) await this.upload(fn, f.blob, this.mime(b.format)); }
-          // an episode updated on another device (« Mettre à jour », e.g. English added): its record names the new transcript
+          // an episode updated on another device (its transcript replaced from the repo, e.g. English added): its record names the new one
           else if (isEp(b) && b.pod && b.pod.sha && localFiles.has(b.id) && byName.has(fn)) {
             const f = await DB.get('files', b.id), have = f && (f.sha || await gitSha(f.blob));
             if (have && have !== b.pod.sha) {
@@ -4541,42 +4583,187 @@ const Pod = {
     await this.req(this.api(`/actions/workflows/${this.WF}/dispatches`), 'dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'main', inputs: { show, episode: key } }) });
   }
 };
-const PV = { shows: null, show: '', feed: null, files: null, msg: '', bad: false, timer: 0, errs: {} };
+// shows: the repo's shows.json; feeds: show id → feed.json (both cached in kv for offline); errs: dispatch errors by
+// 'show/key'; rowErr / loading: the row being opened; deferred: replacements waiting for the reader to close
+const PV = { shows: null, feeds: {}, msg: '', bad: false, timer: 0, errs: {}, rowErr: {}, loading: new Set(), deferred: {}, auto: null, inflight: new Map() };
+const POD_EVERY = 10 * 60e3, POD_PREFETCH = 10;
 // transcriptions ordered from this device and not finished yet: 'show/key' → { at, stage, percent, seen }
 const podPending = () => LS.get('podPending', {});
 const setPodPending = m => LS.set('podPending', m);
+// episodes the owner removed from this device: never pre-fetched again, until opened again
+const podRemoved = () => new Set(LS.get('podRemoved', []));
+function podSetRemoved(id, on) { const s = podRemoved(); if (on) s.add(id); else s.delete(id); LS.set('podRemoved', [...s]); }
+// one record per episode on every device: the same id everywhere, so two devices that fetched it merge instead of doubling
+const podId = (show, key) => `pod.${show}.${key}`;
+const podShowTitle = id => ((PV.shows || []).find(x => x.id === id) || {}).title || '';
+async function podLoadCache() {
+  if (!PV.shows) { const cs = await DB.get('kv', 'pod:shows').catch(() => null); if (cs && !PV.shows) PV.shows = cs.v; }
+  for (const x of PV.shows || []) if (!PV.feeds[x.id]) { const cf = await DB.get('kv', 'pod:feed:' + x.id).catch(() => null); if (cf && !PV.feeds[x.id]) PV.feeds[x.id] = cf.v; }
+}
 async function showPodcasts() {
   if (R.book) closeReader(true);
   show('pod'); window.scrollTo(0, 0);
-  // the cached list first: the tab opens at once, offline too; then refreshed from the repo
-  const cs = await DB.get('kv', 'pod:shows').catch(() => null); if (cs && !PV.shows) PV.shows = cs.v;
-  PV.show = LS.get('podShow', '') || (PV.shows && PV.shows[0] && PV.shows[0].id) || '';
-  const cf = PV.show ? await DB.get('kv', 'pod:feed:' + PV.show).catch(() => null) : null; if (cf && (!PV.feed || PV.feed.show !== PV.show)) PV.feed = cf.v;
+  // the cached lists first: the tab opens at once, offline too; then refreshed from the repo in the background
+  await podLoadCache();
   await renderPod();
-  if (Pod.token()) podRefresh();
+  if (Pod.token()) { podAuto(); if (Object.keys(podPending()).length) podPoll(false); }
 }
-async function podRefresh() {
-  PV.msg = 'Mise à jour de la liste…'; PV.bad = false; podMsg();
+// background refresh: lists, changed transcripts, pre-fetch. At most every 10 minutes (force: tests, the owner's token change)
+function podAuto(force) {
+  if (!Pod.token() || navigator.onLine === false) return Promise.resolve();
+  if (PV.auto) return PV.auto;
+  if (!force && Date.now() - LS.get('podAutoAt', 0) < POD_EVERY) return Promise.resolve();
+  LS.set('podAutoAt', Date.now());
+  PV.auto = (async () => { try { await podAutoNow(); } catch (e) { console.warn('podcasts', e); } finally { PV.auto = null; } })();
+  return PV.auto;
+}
+async function podAutoNow() {
+  await podLoadCache();
+  const quiet = Object.keys(PV.feeds).length > 0; // a list is already shown: no « Mise à jour… » line
+  if (!quiet) { PV.msg = 'Mise à jour de la liste…'; PV.bad = false; podMsg(); }
+  let enAdded = 0; const replaced = [];
   try {
     const shows = await Pod.get('shows.json'); if (!Array.isArray(shows)) throw new Error('shows.json : liste attendue');
     PV.shows = shows.filter(x => x && x.id); DB.put('kv', { k: 'pod:shows', v: PV.shows }).catch(() => {});
-    if (!PV.shows.some(x => x.id === PV.show)) PV.show = PV.shows[0] ? PV.shows[0].id : '';
-    if (PV.show) {
-      const feed = await Pod.get(`podcast/${PV.show}/feed.json`);
-      PV.feed = feed; DB.put('kv', { k: 'pod:feed:' + PV.show, v: feed }).catch(() => {});
-      // which saved episodes have a newer transcript in the repo: only asked when some are saved
-      const eps = (await DB.all('books')).filter(b => isEp(b) && b.pod.show === PV.show);
-      PV.files = eps.length ? await Pod.list(`podcast/${PV.show}`).catch(() => null) : null;
+    const [all, fileIds] = await Promise.all([DB.all('books'), DB.keys('files')]), local = new Set(fileIds);
+    for (const x of PV.shows) {
+      let feed;
+      try { feed = await Pod.get(`podcast/${x.id}/feed.json`); }
+      catch (e) { if (e.status === 404) continue; throw e; } // a show just added, its list not made yet
+      PV.feeds[x.id] = feed; DB.put('kv', { k: 'pod:feed:' + x.id, v: feed }).catch(() => {});
+      // stored transcripts of this show compared with the repo's: one folder listing for all of them
+      const mine = all.filter(b => isEp(b) && b.pod.show === x.id && local.has(b.id));
+      if (!mine.length) continue;
+      const files = await Pod.list(`podcast/${x.id}`);
+      for (const b of mine) {
+        const remote = files.get(b.pod.key + '.json'); if (!remote) continue;
+        const have = await podShaOf(b.id); if (!have || have === remote) continue;
+        if (PV.deferred[b.id] && PV.deferred[b.id].sha === remote) continue;
+        try {
+          const file = await podFetchFile(x.id, b.pod.key);
+          // never under the reader's feet: the open episode gets it when it is closed
+          if (R.book && R.book.id === b.id) { PV.deferred[b.id] = { file, sha: remote }; continue; }
+          const r = await podPutFile(b.id, file); if (r) { replaced.push(b.id); if (r.enAdded) enAdded++; }
+        } catch (e) { console.warn('podcast update', b.id, e); if (e.offline) throw e; }
+      }
     }
-    PV.msg = ''; Pod.on() || Pod.check();
-  } catch (e) { console.warn('podcasts', e); PV.msg = e.message + (PV.feed ? ' Liste affichée : la dernière enregistrée.' : ''); PV.bad = true; }
+    PV.msg = ''; PV.bad = false; Pod.on() || Pod.check();
+  } catch (e) { console.warn('podcasts', e); PV.msg = e.message + (Object.keys(PV.feeds).length ? ' Liste affichée : la dernière enregistrée.' : ''); PV.bad = true; }
+  if (enAdded) toast(`Anglais ajouté : ${enAdded} épisode${enAdded > 1 ? 's' : ''}`);
+  podDropDrive(replaced);
   if (!$('#pod').hidden) await renderPod();
-  if (Object.keys(podPending()).length) podPoll(true); else podPollLater();
+  if (!PV.bad) { await podPrefetch(); if (!$('#pod').hidden) await renderPod(); }
+  if (!$('#pod').hidden && Object.keys(podPending()).length) podPoll(true); else podPollLater();
+}
+// git hash of a stored transcript (computed once, kept with the file)
+async function podShaOf(id) {
+  const f = await DB.get('files', id); if (!f) return '';
+  if (!f.sha) { f.sha = await gitSha(f.blob); if (f.sha) DB.put('files', f).catch(() => {}); }
+  return f.sha;
+}
+async function podFetchFile(show, key) { const b = await Pod.blob(`podcast/${show}/${key}.json`); return new File([b], key + '.json', { type: 'application/json' }); }
+// a transcript into an existing record: the id, position, vocabulary, notes and listening position stay
+async function podPutFile(id, file) {
+  const meta = await importPodcastJson(file);
+  const fresh = await DB.get('books', id); if (!fresh) return null;
+  const was = fresh.pod && fresh.pod.en ? fresh.pod.en.done : 0;
+  await DB.put('files', { id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
+  await DB.del('kv', 'text:' + id);
+  fresh.pod = Object.assign(meta.pod, { show: fresh.pod.show, key: fresh.pod.key }); fresh.size = file.size; delete fresh.stats;
+  await DB.put('books', fresh); StatsQ.add(id);
+  return { enAdded: !!(meta.pod.en && meta.pod.en.done > was) };
+}
+// the Drive copies of replaced transcripts: deleted, so the next sync sends the new ones (files are only sent when absent)
+async function podDropDrive(ids) {
+  if (!ids.length || !Sync.connected()) return;
+  try { const fs = await Sync.list(), names = new Set(ids.map(id => `book-${id}.podcast`)); for (const f of fs) if (names.has(f.name)) await Sync.g(`${DRIVE}/${f.id}`, { method: 'DELETE' }); Sync.dirty(); }
+  catch (e) { console.warn(e); }
+}
+// the open episode was closed: its newer transcript is applied now
+async function podApplyDeferred(id) {
+  const d = PV.deferred[id]; if (!d) return; delete PV.deferred[id];
+  try { const r = await podPutFile(id, d.file); if (r) { if (r.enAdded) toast('Anglais ajouté : 1 épisode'); await podDropDrive([id]); } }
+  catch (e) { console.warn('podcast update', id, e); }
+  if (!$('#pod').hidden) renderPod();
+}
+// the episode's record with its transcript stored, fetched from the repo when needed (one download per episode at a time)
+function podEnsure(show, key) {
+  const id = `${show}/${key}`;
+  if (PV.inflight.has(id)) return PV.inflight.get(id);
+  const p = (async () => {
+    const all = await DB.all('books'); let b = all.find(x => isEp(x) && epKey(x) === id);
+    if (b && await DB.get('files', b.id)) return b;
+    if (b) { await podFileFor(b); return DB.get('books', b.id); }
+    const file = await podFetchFile(show, key), meta = await importPodcastJson(file);
+    Object.assign(meta.pod, { show, key }); // the repo's path names it, as in the feed
+    // same record as a hand import; never opened: no position, lastRead 0 (openBook sets it)
+    b = Object.assign({ id: podId(show, key), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: key + '.json', sample: false }, meta);
+    delete b.sha;
+    await DB.put('files', { id: b.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
+    await DB.put('books', b, { touch: false }); StatsQ.add(b.id);
+    return b;
+  })().finally(() => PV.inflight.delete(id));
+  PV.inflight.set(id, p);
+  return p;
+}
+// a stored record without its transcript (synced from another device, or removed here with its words kept):
+// Google Drive first when connected, else the repo
+async function podFileFor(b) {
+  if (Sync.connected()) { try { const f = await Sync.fetchBookFile(b); if (f) return f; } catch (e) { console.warn(e); } }
+  if (!Pod.token()) throw Object.assign(new Error('Pour télécharger cet épisode, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.'), { status: 0 });
+  await podPutFile(b.id, await podFetchFile(b.pod.show, b.pod.key));
+  return DB.get('files', b.id);
+}
+// tap on a readable row: open it, downloading the transcript first if this device does not have it
+async function podOpen(show, key) {
+  const id = `${show}/${key}`;
+  if (PV.loading.has(id)) return;
+  delete PV.rowErr[id]; podSetRemoved(id, false);
+  const all = await DB.all('books'), b0 = all.find(x => isEp(x) && epKey(x) === id);
+  if (b0 && await DB.get('files', b0.id)) { openBook(b0.id); return; }
+  PV.loading.add(id); podRowState(id);
+  let b;
+  try {
+    if (!b0 && !Pod.token()) throw new Error('Pour télécharger cet épisode, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.');
+    if (!b0 && navigator.onLine === false) throw Object.assign(new Error(), { offline: true });
+    b = await podEnsure(show, key);
+  } catch (e) {
+    PV.rowErr[id] = e.offline ? 'Hors connexion : cet épisode n’est pas encore sur cet appareil.' : 'Téléchargement impossible : ' + e.message;
+  }
+  PV.loading.delete(id);
+  if (b && !$('#pod').hidden) { await openBook(b.id); return; }
+  podRowState(id);
+}
+// loading / error line of one row, without redrawing the list
+function podRowState(id) {
+  for (const row of $$('#pod .pod-ep.rd')) {
+    if (row.dataset.id !== id) continue;
+    const busy = PV.loading.has(id), btn = row.querySelector('.a .btn.primary'), err = row.querySelector('.st.bad.re');
+    row.classList.toggle('busy', busy); row.setAttribute('aria-busy', String(busy));
+    if (btn) { btn.disabled = busy; if (busy) { btn.dataset.lab = btn.dataset.lab || btn.textContent; btn.textContent = 'Chargement…'; } else if (btn.dataset.lab) btn.textContent = btn.dataset.lab; }
+    if (err) { err.textContent = PV.rowErr[id] || ''; err.hidden = !PV.rowErr[id]; }
+  }
+}
+// after a refresh: the newest transcribed episodes of all shows kept on the device, so they open offline
+async function podPrefetch() {
+  if (!Pod.token() || navigator.onLine === false) return;
+  const c = navigator.connection; if (c && c.saveData) return; // the owner asked the phone to spare data
+  const [all, fileIds, tk] = await Promise.all([DB.all('books'), DB.keys('files'), DB.get('kv', 'tomb')]), local = new Set(fileIds);
+  const have = new Set(all.filter(b => isEp(b) && local.has(b.id)).map(epKey)), removed = podRemoved(), tomb = (tk && tk.map) || {};
+  const cand = [];
+  for (const x of PV.shows || []) ((PV.feeds[x.id] || {}).episodes || []).forEach((ep, i) => { if (ep && ep.tr && ep.key) cand.push({ show: x.id, ep, i }); });
+  cand.sort((a, b) => String(b.ep.date || '').localeCompare(String(a.ep.date || '')) || a.i - b.i);
+  for (const { show, ep } of cand.slice(0, POD_PREFETCH)) {
+    const id = `${show}/${ep.key}`;
+    // removed here, or deleted on another device (its sync mark): not brought back behind the owner's back
+    if (have.has(id) || removed.has(id) || tomb[podId(show, ep.key)]) continue;
+    try { await podEnsure(show, ep.key); } catch (e) { console.warn('prefetch', id, e); if (e.offline || e.status === 401 || e.status === 403) break; }
+  }
 }
 function podMsg() { const m = $('#pod-msg'); if (m) { m.textContent = PV.msg; m.hidden = !PV.msg; m.classList.toggle('bad', PV.bad); } }
 const STAGE = { download: 'téléchargement de l’audio', asr: 'reconnaissance vocale', speakers: 'locuteurs', done: 'terminé', error: 'échec' };
 function podPollLater() { clearTimeout(PV.timer); if ($('#pod').hidden || !Object.keys(podPending()).length) return; PV.timer = setTimeout(() => podPoll(false), 60000); }
-// every minute while the tab is open: progress file of each ordered episode, then the feed (tr turns true at the end)
+// every minute while the tab is open: progress file of each ordered episode, then its show's feed (tr turns true at the end)
 async function podPoll(feedFresh) {
   clearTimeout(PV.timer);
   if ($('#pod').hidden) return;
@@ -4589,42 +4776,21 @@ async function podPoll(feedFresh) {
     if (p.stage === 'error') { PV.errs[id] = 'La transcription a échoué' + (p.msg ? ` : ${p.msg}` : '.') + ' Tu peux la relancer.'; done.push(id); }
     else if (!p.seen && Date.now() - p.at > 3 * 3600e3) { PV.errs[id] = 'Pas de nouvelles de la transcription depuis 3 heures : vérifie l’onglet Actions du dépôt.'; done.push(id); }
   }
-  try {
-    if (!feedFresh && PV.show) { const feed = await Pod.get(`podcast/${PV.show}/feed.json`); PV.feed = feed; DB.put('kv', { k: 'pod:feed:' + PV.show, v: feed }).catch(() => {}); }
-    const show = PV.show;
-    for (const ep of (PV.feed && PV.feed.episodes) || []) {
-      const id = `${show}/${ep.key}`; if (!pend[id] || !ep.tr) continue;
-      done.push(id); delete PV.errs[id];
-      toast(`Transcription prête : « ${ep.title} »`, { label: 'Ajouter', fn: () => podAdd(show, ep) });
-    }
-  } catch {}
+  let ready = 0;
+  for (const show of new Set(Object.keys(pend).map(id => id.slice(0, id.indexOf('/'))))) {
+    try {
+      if (!feedFresh) { const feed = await Pod.get(`podcast/${show}/feed.json`); PV.feeds[show] = feed; DB.put('kv', { k: 'pod:feed:' + show, v: feed }).catch(() => {}); }
+      for (const ep of (PV.feeds[show] && PV.feeds[show].episodes) || []) {
+        const id = `${show}/${ep.key}`; if (!pend[id] || !ep.tr || done.includes(id)) continue;
+        done.push(id); delete PV.errs[id]; ready++;
+        toast(`Transcription prête : « ${ep.title} »`, { label: 'Lire', fn: () => podOpen(show, ep.key) });
+      }
+    } catch {}
+  }
   const now = podPending(); for (const [id, p] of Object.entries(pend)) if (now[id]) now[id] = p; done.forEach(id => delete now[id]); setPodPending(now);
   if (!$('#pod').hidden) await renderPod();
+  if (ready) podPrefetch().then(() => renderPod());
   podPollLater();
-}
-// download a transcript from the repo and keep it as an episode (same path as importing the .json by hand)
-async function podAdd(show, ep, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Téléchargement…'; }
-  try { const b = await Pod.blob(`podcast/${show}/${ep.key}.json`); await importFiles([new File([b], ep.key + '.json', { type: 'application/json' })]); }
-  catch (e) { toast('Ajout impossible : ' + e.message); }
-  if (!$('#pod').hidden) renderPod();
-}
-// newer transcript in the repo: replace the stored file, keep the id, position, vocabulary and notes
-async function podUpdate(book, show, ep, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Mise à jour…'; }
-  try {
-    const b = await Pod.blob(`podcast/${show}/${ep.key}.json`), file = new File([b], ep.key + '.json', { type: 'application/json' });
-    const meta = await importPodcastJson(file);
-    await DB.put('files', { id: book.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
-    await DB.del('kv', 'text:' + book.id);
-    const fresh = await DB.get('books', book.id); if (!fresh) return;
-    fresh.pod = meta.pod; fresh.size = file.size; delete fresh.stats;
-    await DB.put('books', fresh); StatsQ.add(book.id);
-    // the Drive copy is replaced on the next sync (files are only sent when absent)
-    if (Sync.connected()) { try { const f = (await Sync.list()).find(x => x.name === `book-${book.id}.podcast`); if (f) await Sync.g(`${DRIVE}/${f.id}`, { method: 'DELETE' }); Sync.dirty(); } catch (e) { console.warn(e); } }
-    toast(`« ${fresh.title} » mis à jour.`);
-  } catch (e) { toast('Mise à jour impossible : ' + e.message); }
-  if (!$('#pod').hidden) renderPod();
 }
 function podAskTranscribe(show, ep) {
   const err = h('p', { class: 'pod-msg bad', hidden: true, style: 'margin:0' });
@@ -4640,19 +4806,32 @@ function podAskTranscribe(show, ep) {
     h('p', { style: 'margin:0' }, `« ${ep.title} »${ep.dur ? ` (${fmtDur(ep.dur)})` : ''} sera transcrit automatiquement par GitHub Actions, dans ton dépôt privé. Compte environ 15 à 30 minutes ; tu peux fermer l’appli entre-temps.`),
     err, h('div', { class: 'confirm-row' }, go, h('button', { class: 'btn', onclick: () => m.close() }, 'Annuler'))));
 }
-// remove a saved episode, with its words (same question as for a book)
-function podAskDelete(b, n) {
-  const m = modal('Supprimer cet épisode ?', h('div', { class: 'pb' },
-    h('p', { style: 'margin:0' }, n ? `« ${b.title} » et ses ${n} mot${n > 1 ? 's' : ''} de vocabulaire seront supprimés.` : `« ${b.title} » sera supprimé de tes épisodes.`),
-    h('div', { class: 'confirm-row' }, h('button', { class: 'btn small danger', onclick: async () => {
-      if (PA.id === epKey(b)) paStop();
-      await DB.del('books', b.id); await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id);
-      await DB.delMany('vocab', (await DB.byBook(b.id)).map(v => v.id));
-      paPos.set(epKey(b), null);
-      m.close(); toast('Épisode supprimé.'); renderPod(); renderLibrary();
-    } }, n ? 'Oui, supprimer l’épisode et ses mots' : 'Oui, supprimer'), h('button', { class: 'btn small', onclick: () => m.close() }, 'Annuler'))));
+// « Retirer de l'appareil »: the transcript leaves this device (and Drive); the episode stays listed and comes back when opened.
+// Its words: kept (the record stays, without its file, so they keep their episode) or deleted with it.
+function podAskRemove(b, n) {
+  const id = epKey(b), drive = Sync.connected();
+  const full = async () => { // record, file, words: gone (a sync mark deletes them on the other devices)
+    if (PA.id === id) paStop();
+    await DB.del('books', b.id); await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id);
+    await DB.delMany('vocab', (await DB.byBook(b.id)).map(v => v.id));
+    paPos.set(id, null);
+  };
+  const keep = async () => { // only the transcript: the record (position, words, notes) stays
+    if (PA.id === id) paStop();
+    await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id); delete PV.deferred[b.id];
+    await podDropDrive([b.id]);
+  };
+  const done = async fn => { await fn(); podSetRemoved(id, true); m.close(); toast('Épisode retiré de l’appareil.'); renderPod(); };
+  const m = modal('Retirer de l’appareil ?', h('div', { class: 'pb' },
+    h('p', { style: 'margin:0' }, `La transcription de « ${b.title} » sera retirée de cet appareil${drive ? ' et de Google Drive' : ''}. L’épisode reste dans la liste : il sera de nouveau téléchargé si tu l’ouvres.`),
+    n ? h('p', { style: 'margin:0' }, `Que faire de ${n > 1 ? `ses ${n} mots` : 'son mot'} de vocabulaire ?`) : null,
+    h('div', { class: 'confirm-row' }, ...(n
+      ? [h('button', { class: 'btn small primary', onclick: () => done(keep) }, n > 1 ? 'Garder les mots' : 'Garder le mot'),
+         h('button', { class: 'btn small danger', onclick: () => done(full) }, n > 1 ? 'Supprimer aussi les mots' : 'Supprimer aussi le mot')]
+      : [h('button', { class: 'btn small danger', onclick: () => done(full) }, 'Retirer')]),
+      h('button', { class: 'btn small', onclick: () => m.close() }, 'Annuler'))));
 }
-function podMarkPlaying() { $$('#pod .pplay').forEach(x => x.setAttribute('aria-pressed', String(PA.host === 'pod' && PA.id === x.dataset.id))); }
+function podMarkPlaying() { $$('#pod .pplay').forEach(x => x.dataset.id && x.setAttribute('aria-pressed', String(PA.host === 'pod' && PA.id === x.dataset.id))); }
 let podBusy = null, podAgain = false;
 function renderPod() {
   if ($('#pod').hidden) return Promise.resolve();
@@ -4660,76 +4839,90 @@ function renderPod() {
   podBusy = (async () => { try { do { podAgain = false; await renderPodNow(); } while (podAgain && !$('#pod').hidden); } finally { podBusy = null; } })();
   return podBusy;
 }
+// listening and reading progress of a stored episode (0..1 each)
+function podProg(b) {
+  const pos = paPos.get(epKey(b)), dur = +(b.pod && b.pod.dur) || 0;
+  return { listen: pos && dur ? Math.min(1, pos / dur) : 0, read: +b.progress || 0 };
+}
+const podStarted = b => { const p = podProg(b); return (p.read > 0 || p.listen > 0) && !(b.status === 'read' || p.read >= 0.99 || p.listen >= 0.98); };
 async function renderPodNow() {
   const [all, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
-  const eps = all.filter(isEp).sort((a, b) => (b.lastRead || b.addedAt) - (a.lastRead || a.addedAt)), local = new Set(fileIds);
+  const eps = all.filter(isEp), local = new Set(fileIds), tok = !!Pod.token(), pend = podPending();
   Pod.refreshTab(eps.length > 0);
   const vn = {}; vocab.forEach(v => { vn[v.bookId] = (vn[v.bookId] || 0) + 1; });
-  const byKey = new Map(eps.map(b => [epKey(b), b]));
   // episodes stored before the English existed in the contract: count it once from the stored file
   for (const b of eps) if (b.pod && !('en' in b.pod) && local.has(b.id)) {
     try { const f = await DB.get('files', b.id); b.pod.en = podEnCount(JSON.parse(await f.blob.text())); await DB.patch('books', b.id, { pod: b.pod }); } catch { b.pod.en = null; }
   }
-  // local transcript hashes, for the "Mettre à jour" check (computed once per stored file)
-  const shaOf = async b => { if (!local.has(b.id)) return ''; const f = await DB.get('files', b.id); if (!f) return ''; if (!f.sha) { f.sha = await gitSha(f.blob); if (f.sha) DB.put('files', f).catch(() => {}); } return f.sha; };
+  const byKey = new Map(eps.map(b => [epKey(b), b]));
   const root = $('#pod-main'); const parts = [];
   parts.push(h('nav', { class: 'topnav' },
     h('div', { class: 'brand' }, h('span', { class: 'hz' }, '播客'), h('span', { class: 'py' }, 'Podcasts')),
     h('button', { class: 'btn', onclick: () => { show('lib'); renderLibrary(); } }, '← Bibliothèque')));
-  // ---- Mes épisodes ----
-  parts.push(h('h2', { class: 'vgroup-h', style: 'font-family:var(--f-serif);font-size:18px;margin:4px 0 6px' }, 'Mes épisodes'));
-  if (!eps.length) parts.push(h('p', { class: 'muted', style: 'margin:0 0 18px;font-size:13.5px' }, 'Aucun épisode enregistré. Ajoute-en un depuis la liste ci-dessous, ou importe une transcription (.json) avec « Importer un livre ».'));
-  else parts.push(h('div', { class: 'pod-list', style: 'margin-bottom:24px' }, eps.map(b => {
-    const pos = paPos.get(epKey(b)), dur = +(b.pod && b.pod.dur) || 0, pct = pos && dur ? Math.min(100, Math.round(100 * pos / dur)) : 0, n = vn[b.id] || 0;
-    const st = b.stats && b.stats.v === STATS_V ? `${fmtWan(b.stats.chars)} · difficulté ${diffLevel(b.stats)}/6` : '';
-    return h('div', { class: 'pod-ep' },
-      h('button', { class: 'pplay', 'aria-label': `Ouvrir « ${b.title} »`, title: 'Ouvrir', onclick: () => openBook(b.id) }, h('span', { class: 'zh', style: 'font-size:15px' }, '读')),
+  parts.push(h('p', { id: 'pod-msg', class: 'pod-msg' + (PV.bad ? ' bad' : ''), role: 'status', hidden: !PV.msg }, PV.msg));
+  // a readable episode (stored, or transcribed in the repo): the whole row opens it
+  const readRow = (show, ep, b, withShow) => {
+    const id = `${show}/${(ep || b.pod).key}`, title = (ep && ep.title) || b.title, dur = +((ep && ep.dur) || (b && b.pod.dur)) || 0;
+    const p = b ? podProg(b) : { listen: 0, read: 0 }, n = b ? vn[b.id] || 0 : 0, en = b && b.pod && b.pod.en;
+    const st = b && b.stats && b.stats.v === STATS_V ? `${fmtWan(b.stats.chars)} · difficulté ${diffLevel(b.stats)}/6` : '';
+    const prog = [p.read > 0.01 ? `lu à\u00a0${Math.round(p.read * 100)}\u00a0%` : '', p.listen > 0.01 ? `écouté à\u00a0${Math.round(p.listen * 100)}\u00a0%` : ''].filter(Boolean).join(' · ');
+    const open = () => podOpen(show, (ep || b.pod).key), busy = PV.loading.has(id);
+    const row = h('div', { class: 'pod-ep rd' + (busy ? ' busy' : ''), 'data-id': id, 'aria-busy': String(busy), onclick: e => { if (!e.target.closest('button, a, .pmenu')) open(); } },
+      h('button', { class: 'pplay', 'aria-label': `Lire « ${title} »`, title: 'Lire', onclick: open }, h('span', { class: 'zh', style: 'font-size:15px' }, '读')),
       h('div', null,
-        h('h3', null, h('a', { href: '#', style: 'color:inherit;text-decoration:none', onclick: e => { e.preventDefault(); openBook(b.id); } }, b.title)),
-        h('div', { class: 'm' }, [b.author, fmtDay(b.date), dur ? fmtDur(dur) : '', pct ? `écouté à ${pct} %` : '', b.lastRead ? 'ouvert le ' + new Date(b.lastRead).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'jamais ouvert'].filter(Boolean).join(' · ')),
+        h('h3', null, h('a', { href: '#', style: 'color:inherit;text-decoration:none', onclick: e => { e.preventDefault(); open(); } }, title)),
+        h('div', { class: 'm' }, [withShow ? podShowTitle(show) || (b && b.author) : '', fmtDay((ep && ep.date) || (b && b.date)), dur ? fmtDur(dur) : '', prog].filter(Boolean).join(' · ')),
         st || n ? h('div', { class: 'm' }, [st, n ? `${n} mot${n > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')) : null,
         h('div', { class: 'a' },
-          h('button', { class: 'btn small primary', onclick: () => openBook(b.id) }, b.progress > 0.01 ? `Reprendre (${Math.round(b.progress * 100)} %)` : 'Ouvrir'),
+          h('button', { class: 'btn small primary', disabled: busy, onclick: open }, busy ? 'Chargement…' : p.read > 0.01 ? `Reprendre (${Math.round(p.read * 100)} %)` : 'Lire'),
           n ? h('button', { class: 'btn small', onclick: () => showVocab({ bookId: b.id }) }, 'Vocabulaire') : null,
-          !local.has(b.id) ? h('span', { class: 'pill toread', title: 'La transcription est sur Google Drive ; elle sera téléchargée à l’ouverture' }, '☁ Drive') : null,
-          b.pod && b.pod.en ? h('span', { class: 'pill', title: b.pod.en.done >= b.pod.en.total ? 'Avec l’anglais de chaque phrase (traduction automatique, non relue)' : `Anglais pour ${b.pod.en.done} phrases sur ${b.pod.en.total} (traduction en cours)` },
-            b.pod.en.done >= b.pod.en.total ? 'EN' : `EN ${b.pod.en.done}/${b.pod.en.total}`) : null,
-          h('button', { class: 'btn small ghost danger', onclick: () => podAskDelete(b, n) }, 'Supprimer'))));
-  })));
-  // ---- the show's feed ----
-  if (!Pod.token()) {
-    parts.push(h('p', { class: 'muted', style: 'font-size:13.5px' }, 'Pour voir les nouveaux épisodes et demander des transcriptions, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.'));
-    root.replaceChildren(...parts); podMarkPlaying(); return;
+          en ? h('span', { class: 'pill', title: en.done >= en.total ? 'Avec l’anglais de chaque phrase (traduction automatique, non relue)' : `Anglais pour ${en.done} phrases sur ${en.total} (traduction en cours)` },
+            en.done >= en.total ? 'EN' : `EN ${en.done}/${en.total}`) : null,
+          h('span', { class: 'st bad re', role: 'status', hidden: !PV.rowErr[id] }, PV.rowErr[id] || ''))));
+    // stored on this device: a small menu at the row's top right
+    if (b) { row.classList.add('has-menu'); row.append(h('details', { class: 'pmenu' }, h('summary', { 'aria-label': 'Plus d’actions', title: 'Plus d’actions' }, '⋯'),
+      h('div', { class: 'pmenu-l' }, h('button', { class: 'btn small ghost danger', onclick: e => { e.currentTarget.closest('details').open = false; podAskRemove(b, n); } }, 'Retirer de l’appareil')))); }
+    return row;
+  };
+  // not transcribed yet: dimmed, plain listening and « Transcrire »
+  const rawRow = (show, ep) => {
+    const id = `${show}/${ep.key}`, p = pend[id], a = h('div', { class: 'a' });
+    if (p) a.append(h('span', { class: 'st', role: 'status' }, 'Transcription demandée… (environ 15 à 30 min)' + (p.stage ? ` · ${STAGE[p.stage] || p.stage}${p.percent ? ` ${p.percent} %` : ''}` : '')));
+    else if (tok) a.append(h('button', { class: 'btn small', onclick: () => podAskTranscribe(show, ep) }, 'Transcrire'));
+    if (PV.errs[id]) a.append(h('span', { class: 'st bad' }, PV.errs[id]));
+    return h('div', { class: 'pod-ep dim' },
+      httpURL(ep.audio) ? h('button', { class: 'pplay', 'data-id': id, 'aria-pressed': 'false', 'aria-label': `Écouter « ${ep.title} »`, title: 'Écouter (sans transcription)', onclick: () => paPlayEp(show, ep) }, '▶') : h('span'),
+      h('div', null, h('h3', null, ep.title), h('div', { class: 'm' }, [fmtDay(ep.date), ep.dur ? fmtDur(ep.dur) : '', ep.chapters && ep.chapters.length ? `${ep.chapters.length} chapitres` : '', 'pas encore transcrit'].filter(Boolean).join(' · ')), a));
+  };
+  // ---- En cours ----
+  const started = eps.filter(podStarted).sort((a, b) => (b.lastRead || b.addedAt || 0) - (a.lastRead || a.addedAt || 0));
+  if (started.length) parts.push(h('section', { class: 'pod-sec', 'data-sec': 'encours' }, h('h2', { class: 'pod-h' }, 'En cours'),
+    h('div', { class: 'pod-list' }, started.map(b => readRow(b.pod.show, null, b, true)))));
+  // ---- one section per show: the feed (when the token is there) and the stored episodes ----
+  const secs = [], known = new Set();
+  for (const x of PV.shows || []) {
+    known.add(x.id);
+    const feed = tok ? PV.feeds[x.id] : null, items = [], seen = new Set();
+    for (const ep of (feed && feed.episodes) || []) { if (!ep || !ep.key) continue; seen.add(ep.key); items.push({ ep, b: byKey.get(`${x.id}/${ep.key}`), d: String(ep.date || '') }); }
+    for (const b of eps) if (b.pod.show === x.id && !seen.has(b.pod.key)) items.push({ ep: null, b, d: String(b.date || '') });
+    if (!items.length && !feed) continue;
+    items.sort((a, b) => b.d.localeCompare(a.d));
+    secs.push({ id: x.id, title: x.title || x.id, rows: items.map(it => it.b || it.ep.tr ? readRow(x.id, it.ep, it.b) : rawRow(x.id, it.ep)), n: items.length });
   }
-  const shows = PV.shows || [];
-  parts.push(h('h2', { style: 'font-family:var(--f-serif);font-size:18px;margin:4px 0 6px' }, (shows.find(x => x.id === PV.show) || {}).title || 'Épisodes'));
-  if (shows.length > 1) parts.push(h('div', { class: 'seg', role: 'group', 'aria-label': 'Émission', style: 'margin-bottom:10px' }, shows.map(x => h('button', { 'aria-pressed': String(x.id === PV.show), onclick: async () => {
-    PV.show = x.id; LS.set('podShow', x.id); const cf = await DB.get('kv', 'pod:feed:' + x.id).catch(() => null); PV.feed = cf ? cf.v : null; PV.files = null; renderPod(); podRefresh();
-  } }, x.title || x.id))));
-  parts.push(h('p', { id: 'pod-msg', class: 'pod-msg' + (PV.bad ? ' bad' : ''), role: 'status', hidden: !PV.msg }, PV.msg));
-  const feed = PV.feed && PV.feed.show === PV.show ? PV.feed : null, pend = podPending();
-  if (!feed) parts.push(h('p', { class: 'muted' }, PV.bad ? '' : 'Chargement de la liste…'));
-  else {
-    const list = h('div', { class: 'pod-list' });
-    const rows = (feed.episodes || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    for (const ep of rows) {
-      const id = `${PV.show}/${ep.key}`, book = byKey.get(id), p = pend[id];
-      const a = h('div', { class: 'a' });
-      if (book) {
-        a.append(h('button', { class: 'btn small primary', onclick: () => openBook(book.id) }, 'Ouvrir'));
-        const remote = PV.files && PV.files.get(ep.key + '.json');
-        if (remote) shaOf(book).then(sha => { if (sha && sha !== remote && a.isConnected) a.append(h('button', { class: 'btn small ghost', title: 'Une transcription plus récente est dans le dépôt (ta position et tes mots sont gardés)', onclick: e => podUpdate(book, PV.show, ep, e.currentTarget) }, 'Mettre à jour')); });
-      } else if (ep.tr) a.append(h('button', { class: 'btn small primary', onclick: e => podAdd(PV.show, ep, e.currentTarget) }, 'Ajouter à mes épisodes'));
-      else if (p) a.append(h('span', { class: 'st', role: 'status' }, 'Transcription demandée… (environ 15 à 30 min)' + (p.stage ? ` · ${STAGE[p.stage] || p.stage}${p.percent ? ` ${p.percent} %` : ''}` : '')));
-      else a.append(h('button', { class: 'btn small', onclick: () => podAskTranscribe(PV.show, ep) }, 'Transcrire'));
-      if (PV.errs[id]) a.append(h('span', { class: 'st bad' }, PV.errs[id]));
-      list.append(h('div', { class: 'pod-ep' },
-        httpURL(ep.audio) ? h('button', { class: 'pplay', 'data-id': id, 'aria-pressed': 'false', 'aria-label': `Écouter « ${ep.title} »`, title: 'Écouter (sans transcription)', onclick: () => paPlayEp(PV.show, ep) }, '▶') : h('span'),
-        h('div', null, h('h3', null, ep.title), h('div', { class: 'm' }, [fmtDay(ep.date), ep.dur ? fmtDur(ep.dur) : '', ep.chapters && ep.chapters.length ? `${ep.chapters.length} chapitres` : ''].filter(Boolean).join(' · ')), a)));
-    }
-    if (!rows.length) list.append(h('p', { class: 'muted' }, 'Aucun épisode dans le flux.'));
-    parts.push(list);
-  }
+  const others = eps.filter(b => !known.has(b.pod.show)).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  if (others.length) secs.push({ id: '', title: 'Autres', rows: others.map(b => readRow(b.pod.show, null, b, true)), n: others.length });
+  const openM = LS.get('podOpen', {}), fold = secs.length > 1;
+  secs.forEach((s, i) => {
+    const list = h('div', { class: 'pod-list' }, s.rows.length ? s.rows : h('p', { class: 'muted' }, 'Aucun épisode dans le flux.'));
+    const head = [h('span', { class: 'pod-h' }, s.title), h('span', { class: 'n' }, `${s.n} épisode${s.n > 1 ? 's' : ''}`)];
+    if (!fold) { parts.push(h('section', { class: 'pod-sec', 'data-sec': s.id || 'autres' }, h('h2', { class: 'pod-sh' }, ...head), list)); return; }
+    const k = s.id || ':autres', d = h('details', { class: 'pod-sec', 'data-sec': s.id || 'autres', open: openM[k] != null ? !!openM[k] : i === 0 }, h('summary', null, h('h2', { class: 'pod-sh' }, ...head)), list);
+    let init = d.open; // an open <details> fires one 'toggle' when drawn: not the owner's choice
+    d.addEventListener('toggle', () => { if (init && d.open) { init = false; return; } init = false; const m = LS.get('podOpen', {}); m[k] = d.open; LS.set('podOpen', m); });
+    parts.push(d);
+  });
+  if (!secs.length && !started.length) parts.push(h('p', { class: 'muted', style: 'font-size:13.5px' }, tok ? (PV.bad ? '' : 'Chargement de la liste…') : 'Aucun épisode enregistré. Tu peux importer une transcription (.json) avec « Importer un livre ».'));
+  if (!tok) parts.push(h('p', { class: 'muted', style: 'font-size:13.5px' }, 'Pour voir les nouveaux épisodes et demander des transcriptions, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.'));
   root.replaceChildren(...parts); podMarkPlaying();
 }
 // section of the ☁ Synchro panel: the GitHub token (separate from Google Drive, never synced)
@@ -4740,6 +4933,7 @@ function podPanel() {
     const v = inp.value.trim(); if (!v) { st.textContent = 'Colle d’abord le jeton.'; return; }
     LS.set('ghToken', v); inp.value = ''; inp.placeholder = '•••••••• (enregistré)'; st.textContent = 'Vérification…';
     const r = await Pod.check(); st.textContent = r.offline ? 'Jeton enregistré ; vérification impossible hors connexion.' : r.msg; rm.hidden = false;
+    if (r.ok) podAuto(true);
   } }, 'Enregistrer le jeton');
   const rm = h('button', { class: 'btn', hidden: !Pod.token(), onclick: () => {
     LS.set('ghToken', ''); LS.set('podOn', false); Pod.refreshTab(); rm.hidden = true; inp.placeholder = 'github_pat_…'; st.textContent = 'Jeton retiré de ce navigateur. Tes épisodes enregistrés restent lisibles.';
@@ -4875,8 +5069,12 @@ const SAMPLE = `第一章 雨天
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
   setTimeout(() => loadZip().catch(() => {}), 2500);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
-  Pod.refreshTab(books.some(isEp)); if (Pod.token() && navigator.onLine !== false) setTimeout(() => Pod.check(), 2000); // the token may have expired since
-  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(reg => { const up = () => reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') up(); }); setInterval(up, 30 * 60 * 1000); }).catch(() => {});
+  Pod.refreshTab(books.some(isEp));
+  // the token may have expired since; then the episodes are brought up to date in the background
+  if (Pod.token() && navigator.onLine !== false) setTimeout(async () => { await Pod.check(); if (Pod.on()) podAuto(); }, 2000);
+  // back in the foreground: same refresh (at most every 10 minutes)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Pod.on()) podAuto(); });
+  try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(reg => { const up = () => reg && reg.update && reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') up(); }); setInterval(up, 30 * 60 * 1000); }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book || topLayer() || Sync.busy || importing) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
 })();
 </script>
