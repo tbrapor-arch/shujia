@@ -80,7 +80,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .icon-btn { border: 0; background: transparent; width: 38px; height: 38px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 16px; }
 @media (hover: hover) { .icon-btn:hover { background: var(--accent-soft); } }
 .icon-btn:active, .btn.ghost:active { background: var(--accent-soft); }
-input[type=text], input[type=url], input[type=date], input[type=search], input[type=number], select, textarea {
+input[type=text], input[type=url], input[type=date], input[type=search], input[type=number], input[type=password], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; min-width: 0; }
 textarea { min-height: 90px; resize: vertical; }
 label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -116,6 +116,20 @@ label.field { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .gen-cover .slip { position: absolute; right: 12%; top: 8%; bottom: 30%; width: 26%; background: #F5F1E6; color: #222; border: 1px solid rgba(0,0,0,.2); display: grid; justify-items: center; align-items: start; padding-top: 10px; overflow: hidden; }
 .gen-cover .slip span { display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: var(--f-serif); font-weight: 600; font-size: 15px; line-height: 1.05; }
 .gen-cover .au { position: absolute; left: 16%; bottom: 7%; color: rgba(255,255,255,.85); font-family: var(--f-serif); font-size: 12px; writing-mode: vertical-rl; }
+/* podcasts tab (episodes live here only, never on the shelf) */
+.pod-list { display: grid; }
+.pod-ep { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 2px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.pod-ep .pplay { width: 40px; height: 40px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; font-size: 14px; padding: 0; }
+.pod-ep .pplay[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pod-ep h3 { margin: 0; font-family: var(--f-serif); font-size: 16px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.pod-ep .m { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pod-ep .a { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+.pod-ep .st { font-size: 12.5px; color: var(--accent); }
+.pod-ep .st.bad { color: var(--seal); }
+.pod-msg { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.pod-msg.bad { color: var(--seal); }
+#pod .tts { z-index: 45; }
+#pod:has(#pod-bar:not([hidden])) { padding-bottom: 180px; } /* the last episode stays reachable above the player */
 .book-card h3 { margin: 0; font-family: var(--f-serif); font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .book-card .au { margin: 0; font-size: 13px; color: var(--muted); }
 .book-card .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -269,6 +283,32 @@ body.reading { background: var(--rbg); }
 .tts-in .play { width: 42px; height: 38px; justify-content: center; font-size: 15px; }
 .tts-in select { width: auto; max-width: 190px; padding: 5px 8px; font-size: 13px; }
 .tts-in .msg { color: var(--muted); max-width: 32em; }
+/* podcast audio bar (same container as 听): two rows, every target ≥ 40 px, fits a 360 px screen */
+.tts-in.pa { display: grid; gap: 4px; width: min(560px, 100%); padding: 6px 8px; }
+.pa-row { display: flex; align-items: center; justify-content: center; gap: 3px; min-width: 0; }
+.pa .pa-b, .pa .icon-btn { flex: none; }
+.pa .pa-b { min-width: 40px; height: 40px; justify-content: center; padding: 0 8px; font-size: 15px; }
+.pa .pa-b[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pa .play { width: 44px; height: 40px; }
+.tts-in.pa select { flex: 0 1 auto; min-width: 56px; height: 40px; padding: 4px 4px; max-width: 72px; }
+.pa .icon-btn { width: 40px; height: 40px; }
+.pa-seek { flex: 1; min-width: 0; height: 28px; margin: 0; accent-color: var(--accent); }
+.pa-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pa .msg { text-align: center; font-size: 12.5px; }
+.pa .pa-ttl { font-family: var(--f-serif); font-size: 13px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* podcast transcripts: the time chip, the speaker mark and the note under the title are drawn from attributes (CSS
+   generated content), so they hold no text node at all: dictionary, pinyin, counts, search, 预习 and context sentences never see them */
+.book p.pp { text-indent: 0; }
+.book .pod-meta { text-indent: 0; text-align: left; margin: 0 0 1.6em; font: 12.5px/1.45 var(--f-ui); color: var(--muted); }
+.book .pod-meta::before { content: attr(data-note); }
+.book .plab::before { content: attr(data-l); }
+.pchip { display: inline-flex; align-items: center; vertical-align: .12em; margin: 0 .5em 0 0; padding: 1px 8px; border: 1px solid var(--line); border-radius: 99px; background: transparent; color: var(--muted); font: 500 11.5px/1.5 var(--f-ui); font-variant-numeric: tabular-nums; text-indent: 0; letter-spacing: 0; user-select: none; -webkit-user-select: none; }
+.pchip::before { content: attr(data-label); }
+.pchip[data-sp]::after { content: attr(data-sp); margin-left: 6px; font: 600 12px/1.5 var(--f-sans); color: var(--spc, var(--accent)); }
+@media (hover: hover) { .pchip:hover { border-color: var(--accent); color: var(--accent); } }
+.book .pod-h { display: flex; align-items: baseline; gap: .1em; flex-wrap: wrap; }
+.book .pod-h .pchip { font-size: 12px; vertical-align: .25em; }
+.book .pseg.now { background: var(--accent-soft); } /* only where CSS highlights are missing */
 .ex { display: grid; gap: 8px; }
 .ex .exs { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; font-family: var(--f-serif); font-size: 15px; line-height: 1.55; }
 .ex .exs mark { background: var(--hl); color: inherit; border-radius: 2px; }
@@ -481,10 +521,11 @@ body.reading { background: var(--rbg); }
       <button class="tab" id="nav-voc" role="tab" aria-selected="false">Vocabulaire</button>
       <button class="tab" id="nav-log" role="tab" aria-selected="false">Journal</button>
       <button class="tab" id="nav-thm" role="tab" aria-selected="false" hidden>Thèmes</button>
+      <button class="tab" id="nav-pod" role="tab" aria-selected="false" hidden>Podcasts</button>
     </div>
     <button class="btn" id="sync-btn" title="Synchronisation Google Drive"><span id="sync-dot" aria-hidden="true">☁</span> <span id="sync-lbl">Synchro</span></button>
     <button class="btn primary" id="import-btn">＋ Importer un livre</button>
-    <input type="file" id="file-in" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.kf8,.prc,.pdb,.fb2,.zip,.docx,.html,.htm,.xhtml,application/epub+zip,text/plain,application/pdf" multiple hidden>
+    <input type="file" id="file-in" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.kf8,.prc,.pdb,.fb2,.zip,.docx,.html,.htm,.xhtml,.json,application/epub+zip,text/plain,application/pdf,application/json" multiple hidden>
   </nav>
   <div class="shelf-head">
     <div class="tabs" id="status-tabs"></div>
@@ -492,7 +533,7 @@ body.reading { background: var(--rbg); }
   <div id="shelf" class="shelf"></div>
   <div class="foot">
     <div class="seg" id="theme-seg" style="justify-self:start;margin-bottom:6px"><span class="muted" style="align-self:center;margin-right:6px">Thème</span><button data-v="auto">Comme le téléphone</button><button data-v="light">Clair</button><button data-v="dark">Sombre</button></div>
-    <span>Formats : EPUB, MOBI, AZW3 et autres formats Kindle sans protection, TXT (UTF-8, GB18030, Big5 détectés automatiquement), PDF avec texte, FB2, DOCX et HTML.</span>
+    <span>Formats : EPUB, MOBI, AZW3 et autres formats Kindle sans protection, TXT (UTF-8, GB18030, Big5 détectés automatiquement), PDF avec texte, FB2, DOCX et HTML. Une transcription de podcast (.json) va dans l'onglet Podcasts, pas dans la bibliothèque.</span>
     <span id="storage-note">Tes livres et ton vocabulaire sont enregistrés dans ce navigateur, et sur ton Google Drive si la synchronisation est activée.</span>
     <span>Fréquences : liste de Jun Da (Modern Chinese Character Frequency List, MTSU) ; niveaux : HSK 3.0 (2021).</span>
     <span>Dictionnaire : <a href="https://cc-cedict.org/wiki/" target="_blank" rel="noopener">CC-CEDICT</a> (MDBG, licence CC BY-SA 4.0), version du 26 septembre 2026.</span>
@@ -501,6 +542,7 @@ body.reading { background: var(--rbg); }
 
 <div id="voc" class="wrap" hidden></div>
 <div id="thm" class="wrap" hidden></div>
+<div id="pod" class="wrap" hidden><div id="pod-main"></div><div class="tts" id="pod-bar" hidden><div class="tts-in pa" id="pod-bar-in"></div></div></div>
 
 <div id="reader" hidden>
   <div class="rbar"><div class="rbar-in">
@@ -558,6 +600,7 @@ function toast(msg, action) {
   const t = h('div', { class: 'toast', role: 'status' }, msg, action ? h('button', { onclick: () => { action.fn(); t.remove(); } }, action.label) : null);
   document.body.append(t);
   const pop = $('#pop'); if (pop && !pop.hidden && pop.classList.contains('sheet')) t.style.bottom = pop.offsetHeight + 12 + 'px'; // above the dictionary sheet, not over its buttons
+  else { const bar = $$('.tts').find(b => !b.hidden && b.offsetHeight); if (bar) t.style.bottom = bar.offsetHeight + 8 + 'px'; } // above the audio / read-aloud bar
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), action ? 6000 : 2600);
 }
 const LS = {
@@ -803,7 +846,7 @@ const xref = s => esc(s).replace(/([^\s,|\[]+)\|([^\s,\[]+)\[([^\]]+)\]/g, (_, t
   .replace(/([\u3400-\u9FFF]+)\|([\u3400-\u9FFF]+)/g, (_, t, si) => `<span class="zh">${si}</span>`);
 
 /* ================= settings ================= */
-const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', theme: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '' }, LS.get('settings', {}));
+const settings = Object.assign({ size: 20, font: 'serif', lh: 1.9, paper: 'auto', theme: 'auto', mode: 'hover', pinyin: false, pyPos: 'under', pyColor: 'mono', vocabHl: false, pySize: 0.55, prepRank: 2500, rareMode: 'rank', ttsRate: 1, ttsVoice: '', podRate: 1, podDictPause: false }, LS.get('settings', {}));
 if (settings.vocabHl === true) settings.vocabHl = 'book';
 if (!settings.pyColorV) { settings.pyColor = 'mono'; settings.pyColorV = 1; try { LS.set('settings', settings); } catch {} }
 function applyTheme() {
@@ -948,6 +991,7 @@ async function importFiles(files) {
   try { await importFilesNow(files); } finally { importing--; }
 }
 async function importFilesNow(files) {
+  let addedEp = 0;
   for (const file of files) {
     const ext = /\.fb2\.zip$/i.test(file.name) ? 'fb2' : (file.name.match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
     const fmt = FORMAT_OF[ext];
@@ -957,20 +1001,27 @@ async function importFilesNow(files) {
     if (!fmt) { toast(`Format non pris en charge : ${file.name}`); continue; }
     try {
       const meta = fmt === 'epub' ? await importEpub(file) : fmt === 'pdf' ? await importPdf(file) : fmt === 'mobi' ? await importMobi(file)
-        : fmt === 'fb2' ? await importFb2(file) : fmt === 'docx' ? await importDocx(file) : fmt === 'html' ? await importHtml(file) : await importTxt(file);
+        : fmt === 'fb2' ? await importFb2(file) : fmt === 'docx' ? await importDocx(file) : fmt === 'html' ? await importHtml(file)
+        : fmt === 'podcast' ? await importPodcastJson(file) : await importTxt(file);
       const pdfText = meta.pdfText; delete meta.pdfText;
-      Object.assign(meta, cleanMeta(meta.title, meta.author));
-      const existing = (await DB.all('books')).find(b => b.title === meta.title && b.size === file.size);
-      if (existing) { toast(`« ${meta.title} » est déjà dans ta bibliothèque.`); continue; }
-      const book = Object.assign({ id: uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: file.name, sample: !!file.sample }, meta);
-      await DB.put('files', { id: book.id, blob: file });
+      const ep = meta.format === 'podcast'; // a podcast episode: same storage as a book, shown only in the Podcasts tab
+      if (!ep) Object.assign(meta, cleanMeta(meta.title, meta.author)); // the feed's title is kept exactly
+      const all = await DB.all('books');
+      const existing = ep ? all.find(b => isEp(b) && b.pod.show === meta.pod.show && b.pod.key === meta.pod.key) : all.find(b => !isEp(b) && b.title === meta.title && b.size === file.size);
+      if (existing) { toast(ep ? `« ${meta.title} » est déjà dans tes épisodes.` : `« ${meta.title} » est déjà dans ta bibliothèque.`); continue; }
+      const book = Object.assign({ id: uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: ep ? meta.pod.key + '.json' : file.name, sample: !!file.sample }, meta);
+      if (ep) await DB.put('files', { id: book.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha }); else await DB.put('files', { id: book.id, blob: file });
+      delete book.sha;
       if (pdfText != null) await DB.put('kv', { k: 'pdftext:' + book.id, v: 1, text: pdfText });
       await DB.put('books', book);
-      toast(`« ${book.title} » ajouté.`);
+      if (ep) addedEp++;
+      toast(ep ? `« ${book.title} » ajouté à tes épisodes.` : `« ${book.title} » ajouté.`);
       StatsQ.add(book.id);
     } catch (e) { console.error(e); toast(`Impossible de lire ${file.name} : ${e.message}`); }
   }
   renderLibrary();
+  // a transcript imported by hand lands where episodes live
+  if (addedEp) { if ($('#pod').hidden) showPodcasts(); else renderPod(); }
 }
 
 /* ================= parsing for reading ================= */
@@ -1154,16 +1205,17 @@ function chunkSections(sections, toc) {
   });
   return { sections: out, toc: toc.map(t => map[t.s] == null ? t : { ...t, s: map[t.s] }) };
 }
-function finishBook(sections, toc, urls, pathIndex) {
+// fixed: the table of contents is given and final (podcast chapters): no chapter-line split, no rebuilt TOC, no "part" pages
+function finishBook(sections, toc, urls, pathIndex, fixed) {
   let chapNote = '';
-  if (toc.length < 3) { const sp = splitAtChapterLines(sections); if (sp && sp.toc.length > toc.length) { sections = sp.sections; toc = sp.toc; chapNote = 'Chapitres repérés dans le texte.'; } }
+  if (toc.length < 3 && !fixed) { const sp = splitAtChapterLines(sections); if (sp && sp.toc.length > toc.length) { sections = sp.sections; toc = sp.toc; chapNote = 'Chapitres repérés dans le texte.'; } }
   ({ sections, toc } = chunkSections(sections, toc));
   sections.forEach((s, k) => { s.len = textLen(s.el); s.el.dataset.i = k; });
   const nonEmpty = sections.filter(s => s.len > 0).length;
   // title detection always runs: it also marks chapter headings for styling
-  const found = sections.map(s => s.cont ? null : extractTitle(s.el, s.len));
+  const found = fixed ? [] : sections.map(s => s.cont ? null : extractTitle(s.el, s.len));
   let tocNote = '';
-  if (toc.length < Math.min(3, Math.ceil(nonEmpty * 0.5))) {
+  if (!fixed && toc.length < Math.min(3, Math.ceil(nonEmpty * 0.5))) {
     toc = []; let partSeen = false;
     found.forEach((f, k) => {
       if (!f || /^(table of contents|contents|目录|目錄)/i.test(f.title)) return;
@@ -1185,6 +1237,7 @@ async function parseFor(book, fileRec) {
   if (book.format === 'fb2') return parseFb2ForReading(fileRec.blob);
   if (book.format === 'docx') return parseTextString((await docxRead(fileRec.blob)).text);
   if (book.format === 'html') return parseHtmlForReading(fileRec.blob);
+  if (book.format === 'podcast') return parsePodcastForReading(fileRec.blob);
   if (book.format === 'pdf') {
     const c = await DB.get('kv', 'pdftext:' + book.id);
     if (c && c.text) return parseTextString(c.text);
@@ -1194,7 +1247,7 @@ async function parseFor(book, fileRec) {
 }
 
 /* ================= other formats: Kindle (MOBI/AZW3), FB2, DOCX, HTML ================= */
-const FORMAT_OF = { epub: 'epub', txt: 'txt', pdf: 'pdf', mobi: 'mobi', azw: 'mobi', azw3: 'mobi', kf8: 'mobi', prc: 'mobi', pdb: 'mobi', fb2: 'fb2', zip: 'fb2', docx: 'docx', html: 'html', htm: 'html', xhtml: 'html' };
+const FORMAT_OF = { epub: 'epub', txt: 'txt', pdf: 'pdf', mobi: 'mobi', azw: 'mobi', azw3: 'mobi', kf8: 'mobi', prc: 'mobi', pdb: 'mobi', fb2: 'fb2', zip: 'fb2', docx: 'docx', html: 'html', htm: 'html', xhtml: 'html', json: 'podcast' };
 const libURL = p => new URL(p, location.href).href;
 let foliateP = null;
 function loadFoliate() {
@@ -1459,6 +1512,81 @@ function parseTextString(raw) {
   return r;
 }
 
+/* ================= podcast transcripts (format 'podcast') ================= */
+// An episode is stored like a book (books + files stores, format 'podcast', file = the transcript JSON) so the reader,
+// vocabulary, 预习, search and Drive sync work unchanged; but it is shown only in the Podcasts tab, never on the shelf.
+const isEp = b => !!b && b.format === 'podcast';
+const mmss = t => { t = Math.max(0, Math.floor(+t || 0)); const h2 = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60, p = n => String(n).padStart(2, '0'); return h2 ? `${h2}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`; };
+const fmtDur = s => { s = +s || 0; if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min'; const m = Math.round(s / 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`; };
+const fmtDay = d => { const x = /^\d{4}-\d{2}-\d{2}/.test(d || '') ? new Date(d.slice(0, 10) + 'T12:00') : null; return x && !isNaN(x) ? x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : (d || ''); };
+const podIsTranscript = tr => !!tr && typeof tr === 'object' && tr.v != null && Array.isArray(tr.segs);
+const httpURL = u => { const x = safeURL(u); return x && /^https?:/i.test(x) ? x : ''; };
+// git's blob hash of the stored file: compared with the repo's listing to offer "Mettre à jour" (the feed carries no transcript date)
+async function gitSha(blob) {
+  try {
+    const b = new Uint8Array(await blob.arrayBuffer()), head = new TextEncoder().encode(`blob ${b.length}\0`), all = new Uint8Array(head.length + b.length);
+    all.set(head); all.set(b, head.length);
+    return [...new Uint8Array(await crypto.subtle.digest('SHA-1', all))].map(x => x.toString(16).padStart(2, '0')).join('');
+  } catch { return ''; } // no crypto.subtle outside https/localhost: no update check
+}
+async function importPodcastJson(file) {
+  let tr; try { tr = JSON.parse(await file.text()); } catch { throw new Error('ce fichier JSON est illisible'); }
+  if (!podIsTranscript(tr)) throw new Error('ce fichier JSON n’est pas une transcription de podcast (champs « v » et « segs » attendus)');
+  if (+tr.v > 1) throw new Error('cette transcription vient d’une version plus récente : recharge l’appli');
+  const n = nameParts(file.name), last = tr.segs.length ? +tr.segs[tr.segs.length - 1].e || 0 : 0;
+  return { format: 'podcast', title: String(tr.title || n.title).trim(), author: String(tr.showTitle || tr.show || '').trim(), isbn: '', publisher: '', date: String(tr.date || ''), lang: 'zh', description: '', cover: null,
+    pod: { show: String(tr.show || 'local'), key: String(tr.key || n.title), audio: httpURL(tr.audio), dur: +tr.dur || last, made: String(tr.made || ''), engine: String(tr.engine || ''), clip: tr.clip == null ? null : +tr.clip },
+    sha: await gitSha(file) };
+}
+// speakers by order of first appearance: 甲 乙 丙 丁…, one colour each (tone colours first: they follow the theme)
+const SPK = '甲乙丙丁戊己庚辛壬癸', SPK_C = ['var(--t4)', 'var(--t1)', 'var(--t3)', 'var(--t2)', '#8E5BB8', '#2F8F9D', '#B5651D', '#5B7B2E', '#C2417A', '#777'];
+// time chip: a button with no text inside (label and speaker are CSS generated content, see .pchip)
+function podChip(t, sp) {
+  const lab = mmss(t), a = { class: 'pchip', type: 'button', 'data-t': (+t).toFixed(2), 'data-label': lab, 'aria-label': `Écouter à partir de ${lab}` + (sp != null ? ` · Locuteur ${sp + 1}` : '') };
+  if (sp != null) { a['data-sp'] = SPK[sp] || String(sp + 1); a.style = `--spc:${SPK_C[sp % SPK_C.length]}`; a.title = `Locuteur ${sp + 1}`; }
+  return h('button', a);
+}
+async function parsePodcastForReading(blob) {
+  let tr; try { tr = JSON.parse(await blob.text()); } catch { throw new Error('transcription illisible'); }
+  if (!podIsTranscript(tr)) throw new Error('ce fichier n’est pas une transcription de podcast');
+  // ct must have one value per UTF-16 unit of t (contract); otherwise it is ignored rather than trusted
+  const segs = tr.segs.filter(g => g && typeof g.t === 'string' && g.t.trim() && isFinite(g.s))
+    .map(g => ({ s: +g.s, e: isFinite(g.e) && +g.e >= +g.s ? +g.e : +g.s, sp: Number.isInteger(g.sp) && g.sp >= 0 ? g.sp : null, t: g.t, ct: Array.isArray(g.ct) && g.ct.length === g.t.length ? g.ct : null }))
+    .sort((a, b) => a.s - b.s); // binary search by time needs them in order
+  const end = Math.max(+tr.dur || 0, segs.length ? segs[segs.length - 1].e : 0);
+  const multi = (+tr.speakers || 0) > 1 || new Set(segs.map(g => g.sp).filter(x => x != null)).size > 1;
+  let chaps = (Array.isArray(tr.chapters) ? tr.chapters : []).filter(c => c && isFinite(c.t)).map(c => ({ t: Math.max(0, +c.t), title: String(c.title || '').trim() }))
+    .sort((a, b) => a.t - b.t).filter((c, i, a) => !i || c.t > a[i - 1].t);
+  let note = '';
+  if (!chaps.length) { for (let t = 0; t === 0 || t < end; t += 300) chaps.push({ t, title: '' }); note = ' · pas de chapitres : un repère toutes les 5 minutes'; }
+  if (segs.length && segs[0].s < chaps[0].t - 0.5) chaps.unshift({ t: 0, title: '', start: true }); // talk before the first mark of the show notes
+  const made = tr.made ? fmtDay(String(tr.made)) : '';
+  const meta = ['Transcription automatique (non relue)', [tr.engine, tr.model].filter(Boolean).join(' / '), made, tr.clip ? `extrait de ${tr.clip} min` : ''].filter(Boolean).join(' · ') + note;
+  const sections = [], toc = [], els = new Array(segs.length); let j = 0;
+  const ENDS = /[。！？!?…」”』]$/;
+  chaps.forEach((c, ci) => {
+    const until = ci + 1 < chaps.length ? chaps[ci + 1].t : Infinity;
+    const sec = document.createElement('section');
+    if (!ci) sec.append(h('div', { class: 'pod-meta', 'data-note': meta }));
+    // the heading's own text is only the show-notes title (real text); the time and "Début" are generated content
+    sec.append(h('h2', { class: 'chap-head pod-h' }, podChip(c.t, null), c.title || (c.start ? h('span', { class: 'plab', 'data-l': 'Début' }) : null)));
+    let p = null, plen = 0, prev = null;
+    // a sentence starting half a second before a mark belongs to the next chapter (marks are rounded to the second)
+    while (j < segs.length && segs[j].s < until - 0.5) {
+      const g = segs[j];
+      const brk = !p || (multi && g.sp != null && prev.sp != null && g.sp !== prev.sp) || g.s - prev.e > 1.2 || (plen > 140 && ENDS.test(prev.t.trim())) || plen > 400;
+      if (brk) { p = h('p', { class: 'pp' }, podChip(g.s, multi ? g.sp : null)); sec.append(p); plen = 0; }
+      const el = h('span', { class: 'pseg', 'data-i': j }, g.t); p.append(el); els[j] = el; plen += g.t.length; prev = g; j++;
+    }
+    sections.push({ el: sec });
+    toc.push({ title: c.title ? `${mmss(c.t)} ${c.title}` : c.start ? 'Début' : mmss(c.t), s: sections.length - 1, level: 0, t: c.t });
+  });
+  const r = finishBook(sections, toc, [], new Map(), true);
+  const { segs: _drop, ...m } = tr;
+  r.pod = { meta: Object.assign(m, { dur: end }), segs, els };
+  return r;
+}
+
 /* ================= library view ================= */
 const coverURLs = new Map();
 let shelfFilter = LS.get('shelf', 'all');
@@ -1486,7 +1614,9 @@ function renderLibrary() {
   return libBusy;
 }
 async function renderLibraryNow() {
-  const [books, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
+  const [all, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
+  const books = all.filter(b => !isEp(b)); // podcast episodes live in their own tab: not on the shelf, not in the counts
+  Pod.refreshTab(all.some(isEp));
   const localFiles = new Set(fileIds);
   const vcount = {}; vocab.forEach(v => { vcount[v.bookId] = (vcount[v.bookId] || 0) + 1; });
   const counts = { all: books.length, reading: 0, toread: 0, read: 0, dropped: 0 };
@@ -1555,6 +1685,7 @@ async function saveSheet(b) {
 }
 async function showDetails(id) {
   const b = await DB.get('books', id); if (!b) return;
+  if (isEp(b)) { showPodcasts(); return; } // an episode has no book sheet: it is managed in « Mes épisodes »
   const n = (await DB.byBook(id)).length;
   const save = async () => { await saveSheet(b); renderLibrary(); };
   const q = encodeURIComponent(b.isbn || `${b.title} ${b.author}`);
@@ -2088,7 +2219,8 @@ async function openBook(id) {
   book.lastRead = Date.now(); DB.put('books', book);
   const vocab = await DB.byBook(id); if (my !== openSeq) return; R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
   cvSetup(); // before the text enters the page: the whole book is never laid out at once
-  bookEl.replaceChildren(...R.data.sections.map(s => s.el), h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
+  bookEl.replaceChildren(...R.data.sections.map(s => s.el), isEp(book) ? h('div', { class: 'book-end' }, 'Fin de l\u2019épisode')
+    : h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
   ensureDict();
   try { await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]); } catch {}
   if (my !== openSeq) return;
@@ -2104,12 +2236,13 @@ function closeReader(silent, opening) {
   VH.stop(); Goal.reset(); $('#r-pct').hidden = true;
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
   if (R.book) savePos(true);
-  endPeek(); R.pending = null; ttsStop(true);
+  endPeek(); R.pending = null; ttsStop(true); paStop();
   hidePop();
   if (R.data) R.data.urls.forEach(u => URL.revokeObjectURL(u));
+  const wasEp = isEp(R.book);
   R.book = null; R.data = null; TTS.blocks = null;
   $('#book').replaceChildren(); // free the closed book's DOM
-  if (!silent) { show('lib'); renderLibrary(); }
+  if (!silent) { if (wasEp) showPodcasts(); else { show('lib'); renderLibrary(); } }
 }
 function restorePos() {
   const p = R.book && R.book.pos; const secs = R.data.sections;
@@ -2152,7 +2285,8 @@ const Track = {
   reset() { this.last = null; this.budget = 0; },
   step(pos) {
     const now = performance.now();
-    if (!R.book || R.peek || document.hidden || this.last == null || now - this.jumpAt < 1200) { this.last = pos; this.t = now; return; }
+    // episodes are not books: nothing read in a transcript enters the reading journal (b.log / readIv stay empty)
+    if (!R.book || isEp(R.book) || R.peek || document.hidden || this.last == null || now - this.jumpAt < 1200) { this.last = pos; this.t = now; return; }
     const dt = Math.min(600, (now - this.t) / 1000); this.t = now;
     this.budget = Math.min(this.CAP, this.budget + dt * this.SPEED);
     const d = pos - this.last; this.last = pos;
@@ -2394,7 +2528,8 @@ async function importThemePage() {
   setTimeout(() => ta.focus(), 50);
 }
 async function showJournal() {
-  const [books, vocab] = await Promise.all([DB.all('books'), DB.all('vocab')]);
+  const [all, vocab] = await Promise.all([DB.all('books'), DB.all('vocab')]);
+  const books = all.filter(b => !isEp(b)); // book statistics only: episodes (and words saved from them) are left out
   const byId = new Map(books.map(b => [b.id, b])), days = new Map();
   const cell = (k, id) => { const d = days.get(k) || new Map(); days.set(k, d); const c = d.get(id) || { chars: 0, words: 0 }; d.set(id, c); return c; };
   for (const b of books) for (const [k, devs] of Object.entries(b.log || {})) { const n = Object.values(devs).reduce((x, y) => x + y, 0); if (n) cell(k, b.id).chars += n; }
@@ -2457,7 +2592,7 @@ const Goal = {
     return [a, b];
   },
   compute() {
-    const g = R.book && R.book.goal; if (!g || !g.on || !R.data) { this.bounds = null; return null; }
+    const g = R.book && !isEp(R.book) && R.book.goal; if (!g || !g.on || !R.data) { this.bounds = null; return null; }
     const key = `${R.book.id}|${g.days}|${g.start}|${g.end}`; if (key === this.key && this.bounds) return this.bounds;
     const ends = this.paraEnds(), [a, b] = this.range(g), n = Math.max(1, Math.min(365, g.days | 0)), bounds = [{ off: a }];
     let j = 0;
@@ -2505,7 +2640,7 @@ const Goal = {
   reset() { this.key = ''; this.bounds = null; this.mark(-1); this.curK = -1; }
 };
 function showGoal() {
-  const b = R.book, d = R.data; if (!b || !d) return;
+  const b = R.book, d = R.data; if (!b || !d || isEp(b)) return;
   const g = Object.assign({ on: true, days: 30, start: null, end: null, startLabel: '', endLabel: '' }, b.goal || {});
   const pos = R.pending ? d.before[R.pending.s] + R.pending.r * d.sections[R.pending.s].len : 0;
   const toc = d.toc;
@@ -2558,7 +2693,7 @@ function showToc() {
   const toc = R.data.toc; const cur = chapterOf(R.cur).idx;
   const scrim = h('div', { class: 'scrim', onclick: () => close() });
   const bid = R.book.id;
-  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'overview'); } }, 'Stats'), h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'rare'); } }, 'Caractères rares'), h('button', { class: 'btn small', onclick: () => { close(); showGoal(); } }, R.book.goal && R.book.goal.on ? `Objectif · ${R.book.goal.days} j` : 'Objectif')),
+  const list = h('nav', { class: 'toc' }, h('div', { style: 'padding:4px 10px 10px;display:flex;gap:6px;flex-wrap:wrap' }, h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'overview'); } }, 'Stats'), h('button', { class: 'btn small', onclick: () => { close(); showStats(bid, 'rare'); } }, 'Caractères rares'), isEp(R.book) ? null : h('button', { class: 'btn small', onclick: () => { close(); showGoal(); } }, R.book.goal && R.book.goal.on ? `Objectif · ${R.book.goal.days} j` : 'Objectif')),
     R.data.tocNote ? h('div', { class: 'note' }, R.data.tocNote) : null,
     toc.map((t, i) => h('div', { class: 'row' }, h('a', { href: '#', class: `lv${Math.min(t.level, 2)}${i === cur ? ' cur' : ''}`, onclick: e => { e.preventDefault(); close(); goSection(t.s); } }, t.title),
       isLeafEntry(i) ? h('button', { title: 'Préparer ce chapitre : ses mots les plus rares', onclick: () => { close(); showPrep(i); } }, '预习') : null)));
@@ -2567,7 +2702,7 @@ function showToc() {
   const run = async () => {
     const qv = qIn.value.trim(); if (!qv) { res.hidden = true; list.hidden = false; return; }
     const my = ++runId; res.hidden = false; list.hidden = true; res.replaceChildren(h('div', { class: 'cnt' }, 'Recherche…'));
-    const ids = allIn.checked ? (await DB.all('books')).map(b => b.id) : [bid];
+    const ids = allIn.checked ? [...new Set([bid, ...(await DB.all('books')).filter(b => !isEp(b)).map(b => b.id)])] : [bid]; // episodes are not in the library
     const found = await searchBooks(qv, ids); if (my !== runId) return;
     res.replaceChildren(h('div', { class: 'cnt' }, found.length ? `${found.length >= 300 ? '300+' : found.length} résultat${found.length > 1 ? 's' : ''}` : 'Aucun résultat.'),
       ...found.slice(0, 150).map(x => h('button', { class: 'sr', onclick: () => { close(); goToPassage(x.bookId, x.k, x.s); } },
@@ -2612,6 +2747,8 @@ function showSettings() {
       h('div', { class: 'set-group' }, h('h3', null, 'Thème de l\'appli'), seg('theme', [['auto', 'Comme le téléphone'], ['light', 'Clair'], ['dark', 'Sombre']], v => setTheme(v)),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Clair : reste clair même si le mode nuit du téléphone est activé.')),
       h('div', { class: 'set-group' }, h('h3', null, 'Fond'), seg('paper', [['auto', 'Automatique'], ['sepia', 'Sépia'], ['night', 'Nuit']])),
+      isEp(R.book) ? h('div', { class: 'set-group' }, h('h3', null, 'Épisode : quand le dictionnaire s\u2019ouvre'), seg('podDictPause', [[false, 'Continuer la lecture'], [true, 'Mettre en pause']]),
+        h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Mettre en pause quand le dictionnaire s\u2019ouvre (en touchant un mot). Par défaut, l\u2019audio continue pour lire en même temps.')) : null,
       isTouch() ? null : h('div', { class: 'set-group' }, h('h3', null, 'Dictionnaire'), seg('mode', [['hover', 'Au survol'], ['click', 'Au clic']]),
         h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Au survol : la définition suit la souris. Clique sur un mot pour figer le pop-up, puis appuie sur A pour l\'ajouter.'))));
   function close() { scrim.remove(); d.remove(); }
@@ -2715,6 +2852,8 @@ function selectSentence(node, off) {
   selExpanded = true; const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
 }
 function showHit(hit, x, y, pinned) {
+  // by default the episode keeps playing while a word is looked up (reading along); a setting pauses it on a tap
+  if (pinned && settings.podDictPause && PA.host === 'reader' && PA.want) paPause();
   if (!Dict.ready) { ensureDict(); if (pinned) toast('Le dictionnaire se charge, réessaie dans un instant.'); return; }
   ensureFreq();
   const results = Dict.lookup(hit.str);
@@ -2768,6 +2907,7 @@ function renderPop() {
     <button class="btn small" data-act="ex" aria-expanded="${!!P.showEx}">Exemples</button>
     <button class="btn small" data-act="sent" title="Sélectionner toute la phrase">Phrase</button>
     <button class="btn small" data-act="ai" title="Ouvre Claude avec cette phrase (question copiée aussi)">Claude ↗</button>
+    ${isEp(R.book) && P.hit.start.node.parentElement.closest('.pseg') ? '<button class="btn small" data-act="podplay" title="Écouter l\u2019épisode à partir de ce mot" aria-label="Écouter à partir d\u2019ici">▶ d\u2019ici</button>' : ''}
     <span class="grow"></span>${sheet ? '' : (P.pinned ? '<span><kbd>A</kbd> ajouter · <kbd>S</kbd> écouter · <kbd>E</kbd> exemples · <kbd>C</kbd> Claude</span>' : '<span>Clic : figer · <kbd>A</kbd> · <kbd>S</kbd> · <kbd>E</kbd> · <kbd>C</kbd></span>')}</div>
     <div class="sec ex" id="pop-ex" ${P.showEx ? '' : 'hidden'}></div>`;
   pop.classList.toggle('sheet', sheet);
@@ -2826,6 +2966,7 @@ $('#pop').addEventListener('click', e => {
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (act === 'ai') askClaude();
   else if (act === 'say') sayWord();
+  else if (act === 'podplay') { const t = podTimeAt(P.hit.start.node, P.hit.start.off); hidePop(); if (t != null) paFrom(t); }
   else if (act === 'sent') { const st = P.hit.start; hidePop(); selectSentence(st.node, st.off); }
 });
 // copy first: once the new tab has the focus, the browser refuses to write to the clipboard
@@ -2915,6 +3056,8 @@ document.addEventListener('mousemove', e => {
   });
 });
 $('#book').addEventListener('click', e => {
+  const chip = e.target.closest('.pchip'); // podcast time chip: play from there
+  if (chip) { e.preventDefault(); hidePop(); paFrom(+chip.dataset.t); return; }
   const a = e.target.closest('a[data-go]');
   if (a) {
     e.preventDefault(); const si = R.data.pathIndex.get(a.dataset.go); const k = R.data.sections.findIndex(s => s.spine === si); if (k < 0) return;
@@ -3454,6 +3597,7 @@ function drawTts() {
     h('span', { class: 'msg', id: 'tts-msg', hidden: true })].filter(Boolean)); // without a Chinese voice there is no voice menu (a bare null would be written as text)
 }
 $('#r-tts').addEventListener('click', () => {
+  if (isEp(R.book)) { if (PA.host === 'reader') paStop(); else paOpenBook(); return; } // an episode: its real audio, not the speech synthesiser
   if (TTS.on) { ttsStop(); return; }
   if (!ttsOK()) { toast('La lecture audio n\'est pas disponible dans ce navigateur.'); return; }
   TTS.on = true; TTS.blocks = null; TTS.sents = null; TTS.bi = 0; TTS.voice = null;
@@ -3461,6 +3605,216 @@ $('#r-tts').addEventListener('click', () => {
   drawTts(); ttsPlay();
 });
 if (ttsOK()) speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', () => { if (TTS.on) { TTS.voice = TTS.voice || pickVoice(); drawTts(); } });
+
+/* ================= podcast audio bar (听 on an episode, ▶ in the Podcasts tab) ================= */
+// One <audio>, streamed from the podcast host: the app never fetches, caches or stores the audio (no crossorigin either:
+// the hosts send no CORS headers, and playback does not need them). In the reader the bar takes the #tts container and
+// follows the transcript: the sentence being said is found by time (binary search on the segments) and highlighted.
+const PA = { el: null, host: '', id: '', title: '', show: '', src: '', dur: 0, segs: null, els: null, cur: -1, rep: -1, want: false, repWait: 0, err: '',
+  userAt: 0, selfAt: 0, raf: 0, lock: null, savedAt: 0, ui: null, seeking: false };
+const PA_RATES = [0.6, 0.75, 0.85, 1, 1.15, 1.3];
+// listening position per episode, in this browser only (kept out of the synced record: no Drive churn every few seconds)
+const paPos = { get(id) { const m = LS.get('podPos', {}); return m[id] == null ? null : +m[id]; },
+  set(id, t) { const m = LS.get('podPos', {}); if (t == null) delete m[id]; else m[id] = Math.round(t); LS.set('podPos', m); } };
+const epKey = b => b && b.pod ? `${b.pod.show}/${b.pod.key}` : '';
+function paAudio() {
+  if (PA.el) return PA.el;
+  const a = PA.el = new Audio(); a.preload = 'none';
+  a.addEventListener('playing', () => { PA.err = ''; paUi(); paLoop(); try { navigator.wakeLock && navigator.wakeLock.request('screen').then(l => { PA.lock = l; }).catch(() => {}); } catch {} });
+  a.addEventListener('pause', () => { if (!PA.repWait) { PA.want = false; paSave(true); } paUi(); try { PA.lock && PA.lock.release(); PA.lock = null; } catch {} });
+  a.addEventListener('timeupdate', () => paTick());
+  a.addEventListener('loadedmetadata', () => { if (isFinite(a.duration) && a.duration > 0) PA.dur = a.duration; paUi(); });
+  a.addEventListener('ended', () => { PA.want = false; paSave(true); if (PA.id) paPos.set(PA.id, null); paUi(); });
+  a.addEventListener('error', () => {
+    if (!PA.src) return; // the source was removed on purpose (bar closed)
+    PA.want = false; PA.err = navigator.onLine === false ? 'Hors connexion : l’audio ne peut pas être lu. Le texte reste lisible.' : 'Audio indisponible : l’hébergeur du podcast ne répond pas. Le texte reste lisible.';
+    paDraw();
+  });
+  return a;
+}
+const paTime = () => PA.el ? PA.el.currentTime || 0 : 0;
+// last segment that has started at time t (−1 before the first)
+function paIndexAt(t) {
+  const g = PA.segs; if (!g || !g.length) return -1;
+  let lo = 0, hi = g.length - 1, k = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (g[m].s <= t + 0.05) { k = m; lo = m + 1; } else hi = m - 1; }
+  return k;
+}
+// first sentence visible under the reader's bar
+function paVisibleIndex() {
+  const els = PA.els || (R.data && R.data.pod && R.data.pod.els); if (!els || !els.length) return 0;
+  const y = barH() + 8; let lo = 0, hi = els.length - 1, ans = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (els[m].getBoundingClientRect().bottom < y) lo = m + 1; else { ans = m; hi = m - 1; } }
+  return ans;
+}
+// time of a character tapped in the transcript: the seg's start + the character's own offset when ct exists
+function podTimeAt(node, off) {
+  const d = R.data && R.data.pod, span = node && node.parentElement && node.parentElement.closest('.pseg'); if (!d || !span) return null;
+  const g = d.segs[+span.dataset.i]; if (!g) return null;
+  const tw = textWalker(span); let n, k = 0; while ((n = tw.nextNode()) && n !== node) k += n.data.length; // rt (pinyin) is skipped by textWalker
+  k += off;
+  return g.ct ? g.s + (g.ct[Math.min(k, g.ct.length - 1)] || 0) / 100 : g.s;
+}
+function paHost() { return PA.host === 'reader' ? $('#tts') : PA.host === 'pod' ? $('#pod-bar') : null; }
+// bar for the episode open in the reader; at = start time (else the saved position, else the first sentence on screen)
+function paOpenBook(at) {
+  const b = R.book, d = R.data; if (!isEp(b) || !d || !d.pod) return false;
+  const src = httpURL((b.pod && b.pod.audio) || d.pod.meta.audio);
+  if (!src) { toast('Pas d’adresse audio pour cet épisode.'); return false; }
+  paStop();
+  Object.assign(PA, { host: 'reader', id: epKey(b), title: b.title, show: b.author || '', src, dur: +(b.pod && b.pod.dur) || d.pod.meta.dur || 0, segs: d.pod.segs, els: d.pod.els, cur: -1, rep: -1, err: '' });
+  const saved = paPos.get(PA.id);
+  const t = at != null ? at : saved != null ? saved : (d.pod.segs[paVisibleIndex()] || { s: 0 }).s;
+  const a = paAudio(); a.src = src; a.playbackRate = settings.podRate || 1; paPitch(a);
+  try { a.currentTime = t; } catch {} // before the metadata: becomes the start position
+  $('#tts').hidden = false; $('#tts-in').classList.add('pa'); $('#r-tts').setAttribute('aria-pressed', 'true');
+  paMedia(); paDraw(); paMark(paIndexAt(t), true); paPlay();
+  return true;
+}
+// plain playback of a feed episode from the Podcasts tab (no transcript needed)
+function paPlayEp(show, ep) {
+  const id = `${show}/${ep.key}`;
+  if (PA.host === 'pod' && PA.id === id) { PA.want ? paPause() : paPlay(); return; }
+  const src = httpURL(ep.audio); if (!src) { toast('Pas d’adresse audio pour cet épisode.'); return; }
+  paStop();
+  Object.assign(PA, { host: 'pod', id, title: ep.title, show: (PV.shows || []).find(x => x.id === show)?.title || show, src, dur: +ep.dur || 0, segs: null, els: null, cur: -1, rep: -1, err: '' });
+  const a = paAudio(); a.src = src; a.playbackRate = settings.podRate || 1; paPitch(a);
+  const saved = paPos.get(id); try { a.currentTime = saved || 0; } catch {}
+  $('#pod-bar').hidden = false; paMedia(); paDraw(); paPlay(); podMarkPlaying();
+}
+// chip / "▶ d'ici": play the open episode from t
+function paFrom(t) {
+  if (!isEp(R.book)) return;
+  if (PA.host !== 'reader' || PA.id !== epKey(R.book)) { paOpenBook(t); return; }
+  PA.userAt = 0; if (PA.rep >= 0) PA.rep = Math.max(0, paIndexAt(t));
+  paSeek(t, true);
+}
+const paPitch = a => { a.preservesPitch = true; a.mozPreservesPitch = true; a.webkitPreservesPitch = true; };
+function paPlay() {
+  const a = PA.el; if (!a || !PA.src) return;
+  PA.want = true; PA.err = ''; paUi();
+  a.play().catch(e => {
+    if (e && e.name === 'AbortError') return; // a new source or seek replaced this request
+    PA.want = false; PA.err = e && e.name === 'NotAllowedError' ? 'Le navigateur a bloqué la lecture : touche ▶.' : (navigator.onLine === false ? 'Hors connexion : l’audio ne peut pas être lu. Le texte reste lisible.' : 'Audio indisponible : l’hébergeur du podcast ne répond pas. Le texte reste lisible.');
+    paDraw();
+  });
+}
+function paPause() { PA.want = false; clearTimeout(PA.repWait); PA.repWait = 0; if (PA.el) PA.el.pause(); paUi(); }
+function paSeek(t, play) {
+  const a = PA.el; if (!a) return;
+  t = Math.max(0, Math.min(t, (PA.dur || Infinity) - 0.2));
+  clearTimeout(PA.repWait); PA.repWait = 0;
+  try { a.currentTime = t; } catch {}
+  paMark(paIndexAt(t), true); paUi();
+  if (play) paPlay();
+}
+function paStep(dir) {
+  const g = PA.segs; if (!g || !g.length) return;
+  const t = paTime(); let i = paIndexAt(t);
+  i = dir < 0 ? (i >= 0 && t - g[i].s > 1 ? i : i - 1) : i + 1; // back: start of this sentence, or the previous one if just started
+  i = Math.max(0, Math.min(g.length - 1, i));
+  if (PA.rep >= 0) PA.rep = i;
+  PA.userAt = 0; paSeek(g[i].s, PA.want);
+}
+function paToggleRepeat() {
+  if (!PA.segs) return;
+  PA.rep = PA.rep >= 0 ? -1 : Math.max(0, paIndexAt(paTime()));
+  paDraw();
+}
+// called on timeupdate and, while playing, on every frame: highlight, repeat loop, time display, saved position
+function paTick() {
+  const a = PA.el; if (!a || !PA.src) return;
+  const t = a.currentTime;
+  if (PA.rep >= 0 && PA.segs && !PA.repWait && PA.want) {
+    const g = PA.segs[PA.rep];
+    if (g && (t >= g.e - 0.03 || t < g.s - 1.5)) { // end of the sentence (or the user jumped away): short pause, then again
+      PA.repWait = setTimeout(() => { PA.repWait = 0; if (PA.rep < 0 || !PA.want) return; try { a.currentTime = PA.segs[PA.rep].s; } catch {} a.play().catch(() => {}); }, 700);
+      a.pause(); return;
+    }
+  }
+  if (PA.segs) { const i = paIndexAt(t); if (i !== PA.cur) paMark(i); }
+  paUi(); paSave();
+}
+function paLoop() { cancelAnimationFrame(PA.raf); const f = () => { if (!PA.el || PA.el.paused) return; paTick(); PA.raf = requestAnimationFrame(f); }; PA.raf = requestAnimationFrame(f); }
+function paSave(now) { if (!PA.id || !PA.el) return; const t = Date.now(); if (!now && t - PA.savedAt < 5000) return; PA.savedAt = t; if (PA.el.currentTime > 0) paPos.set(PA.id, PA.el.currentTime); }
+// highlight sentence i (CSS highlight 'tts', like read-aloud; a class where highlights are missing) and keep it in view
+function paMark(i, force) {
+  PA.cur = i;
+  if (PA.host !== 'reader' || !PA.els) return;
+  const el = PA.els[i];
+  const hl = !!(window.Highlight && CSS.highlights);
+  $$('.pseg.now', $('#book')).forEach(x => x !== el && x.classList.remove('now'));
+  if (!el) { try { hl && CSS.highlights.delete('tts'); } catch {} return; }
+  // the range is anchored outside the span: pinyin mode rewrites what is inside
+  try { if (hl) { const r = document.createRange(); r.setStartBefore(el); r.setEndAfter(el); CSS.highlights.set('tts', new Highlight(r)); } else el.classList.add('now'); } catch { el.classList.add('now'); }
+  // follow the voice, but never against the reader: not for 4 s after a touch/wheel/scroll, never under the dictionary
+  if (!force && (!PA.want || Date.now() - PA.userAt < 4000)) return;
+  if (!$('#pop').hidden || !$('#notepop').hidden || topLayer()) return;
+  const rc = el.getBoundingClientRect(), top = barH() + 8, bottom = innerHeight - ($('#tts').offsetHeight || 110) - 16;
+  if (rc.top >= top && rc.bottom <= bottom) return;
+  PA.selfAt = Date.now();
+  // scrollBy, not scrollTo: the journal treats scrollTo as a jump (irrelevant for episodes today, but the scroll is reading)
+  scrollBy({ top: rc.top - top - Math.max(40, (bottom - top) / 4), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+}
+const paUser = () => { if (Date.now() - PA.selfAt > 900) PA.userAt = Date.now(); };
+addEventListener('touchstart', () => { PA.userAt = Date.now(); }, { passive: true });
+addEventListener('wheel', () => { PA.userAt = Date.now(); }, { passive: true });
+addEventListener('scroll', paUser, { passive: true });
+function paMedia() {
+  const ms = navigator.mediaSession; if (!ms) return;
+  try { ms.metadata = new MediaMetadata({ title: PA.title, artist: PA.show, album: '书架 Shūjià' }); } catch {}
+  const set = (a, f) => { try { ms.setActionHandler(a, f); } catch {} };
+  set('play', () => paPlay()); set('pause', () => paPause());
+  set('seekbackward', d => paSeek(paTime() - ((d && d.seekOffset) || 10), PA.want));
+  set('seekforward', d => paSeek(paTime() + ((d && d.seekOffset) || 10), PA.want));
+  set('previoustrack', PA.segs ? () => paStep(-1) : null); set('nexttrack', PA.segs ? () => paStep(1) : null);
+}
+function paStop() {
+  if (!PA.host) return;
+  const host = paHost();
+  paSave(true); PA.want = false; clearTimeout(PA.repWait); PA.repWait = 0; cancelAnimationFrame(PA.raf);
+  if (PA.el) { PA.src = ''; PA.el.pause(); PA.el.removeAttribute('src'); try { PA.el.load(); } catch {} } // stops the download too
+  try { PA.lock && PA.lock.release(); PA.lock = null; } catch {}
+  if (PA.host === 'reader') { try { CSS.highlights && CSS.highlights.delete('tts'); } catch {} $$('.pseg.now').forEach(x => x.classList.remove('now')); $('#tts-in').classList.remove('pa'); $('#tts-in').replaceChildren(); $('#r-tts').setAttribute('aria-pressed', 'false'); }
+  if (host) host.hidden = true;
+  const ms = navigator.mediaSession; if (ms) { try { ms.metadata = null; } catch {} for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack']) try { ms.setActionHandler(a, null); } catch {} }
+  Object.assign(PA, { host: '', id: '', segs: null, els: null, cur: -1, rep: -1, err: '', ui: null });
+  podMarkPlaying();
+}
+function paDraw() {
+  const host = paHost(); if (!host) return;
+  const box = host.firstElementChild, book = PA.host === 'reader', seg = !!PA.segs;
+  const b = (label, txt, fn, extra) => h('button', Object.assign({ class: 'btn small pa-b', title: label, 'aria-label': label, onclick: fn }, extra || {}), txt);
+  const play = h('button', { class: 'btn primary play pa-b', onclick: () => PA.want ? paPause() : paPlay() });
+  const time = h('span', { class: 'pa-time', 'aria-live': 'off' });
+  const seek = h('input', { type: 'range', class: 'pa-seek', min: 0, max: Math.max(1, Math.round(PA.dur)), step: 1, value: Math.round(paTime()), 'aria-label': 'Position dans l’épisode',
+    oninput: e => { PA.seeking = true; time.textContent = `${mmss(+e.target.value)} / ${mmss(PA.dur)}`; },
+    onchange: e => { PA.seeking = false; PA.userAt = 0; paSeek(+e.target.value, PA.want); } });
+  const rate = h('select', { 'aria-label': 'Vitesse', title: 'Vitesse', onchange: e => { settings.podRate = +e.target.value; LS.set('settings', settings); if (PA.el) { PA.el.playbackRate = settings.podRate; paPitch(PA.el); } } },
+    PA_RATES.map(r => h('option', { value: r, selected: (settings.podRate || 1) === r }, '× ' + String(r).replace('.', ','))));
+  box.classList.add('pa');
+  box.replaceChildren(...[ // replaceChildren would write a bare null as text
+    book ? null : h('div', { class: 'pa-ttl' }, PA.title),
+    h('div', { class: 'pa-row' },
+      seg ? b('Phrase précédente', '⏮', () => paStep(-1)) : b('Reculer de 10 secondes', '−10', () => paSeek(paTime() - 10, PA.want)),
+      play,
+      seg ? b('Phrase suivante', '⏭', () => paStep(1)) : b('Avancer de 10 secondes', '+10', () => paSeek(paTime() + 10, PA.want)),
+      rate,
+      seg ? b('Répéter la phrase', '🔁', paToggleRepeat, { 'aria-pressed': String(PA.rep >= 0) }) : null,
+      seg && book ? b('Lire à partir de l’écran', 'Ici', () => { PA.userAt = 0; const i = paVisibleIndex(); if (PA.rep >= 0) PA.rep = i; paSeek(PA.segs[i].s, true); }) : null,
+      h('button', { class: 'icon-btn', 'aria-label': 'Fermer le lecteur audio', title: 'Fermer', onclick: () => paStop() }, '✕')),
+    h('div', { class: 'pa-row' }, time, seek),
+    PA.err ? h('div', { class: 'msg', role: 'status' }, PA.err) : null].filter(Boolean));
+  PA.ui = { play, time, seek };
+  paUi();
+}
+function paUi() {
+  const u = PA.ui; if (!u) return;
+  const t = paTime();
+  u.play.textContent = PA.want ? '❚❚' : '▶'; u.play.setAttribute('aria-label', PA.want ? 'Pause' : 'Lire'); u.play.title = PA.want ? 'Pause' : 'Lire';
+  if (!PA.seeking) { u.time.textContent = `${mmss(t)} / ${mmss(PA.dur)}`; u.seek.max = Math.max(1, Math.round(PA.dur)); u.seek.value = Math.round(t); }
+  try { navigator.mediaSession && (navigator.mediaSession.playbackState = PA.want ? 'playing' : 'paused'); } catch {}
+}
 
 /* ================= example sentences ================= */
 function buildTextIndex(d) {
@@ -3480,7 +3834,8 @@ async function bookTextIndex(id, cachedOnly) {
 // up to `per` sentences from the current book, then up to `per` from the other books; short, varied sentences first
 async function findExamples(forms, exclude, curId, per = 3) {
   const fs = [...new Set(forms.filter(Boolean))].sort((a, b) => b.length - a.length);
-  const books = (await DB.all('books')).sort((a, b) => (b.id === curId) - (a.id === curId) || (b.lastRead || 0) - (a.lastRead || 0));
+  // "your other books" means books: episodes only give examples for themselves
+  const books = (await DB.all('books')).filter(b => b.id === curId || !isEp(b)).sort((a, b) => (b.id === curId) - (a.id === curId) || (b.lastRead || 0) - (a.lastRead || 0));
   const same = [], other = []; const seen = new Set([exclude]);
   for (const b of books) {
     const target = b.id === curId ? same : other;
@@ -3589,15 +3944,19 @@ async function renderVocab() {
   const due = list.filter(v => (v.due || 0) <= Date.now());
   const root = $('#voc'); root.replaceChildren();
   const back = V.from === 'reader' && R.book
-    ? h('button', { class: 'btn', onclick: () => { show('reader'); restorePos(); } }, '← Retour au livre')
+    ? h('button', { class: 'btn', onclick: () => { show('reader'); restorePos(); } }, isEp(R.book) ? '← Retour à l\u2019épisode' : '← Retour au livre')
     : h('button', { class: 'btn', onclick: () => { show('lib'); renderLibrary(); } }, '← Bibliothèque');
   root.append(h('nav', { class: 'topnav' },
     h('div', { class: 'brand' }, h('span', { class: 'hz' }, '生词'), h('span', { class: 'py' }, 'Vocabulaire')),
     back));
-  const bookSel = h('select', { id: 'v-book', onchange: e => { V.bookId = e.target.value; V.chapter = ''; renderVocab(); } },
-    h('option', { value: '' }, 'Tous les livres'), books.filter(b => all.some(v => v.bookId === b.id)).map(b => h('option', { value: b.id, selected: b.id === V.bookId }, b.title)));
+  // one vocabulary and one review deck, but the sources are told apart: books, then podcast episodes
+  const srcOpt = b => h('option', { value: b.id, selected: b.id === V.bookId }, b.title);
+  const withWords = books.filter(b => all.some(v => v.bookId === b.id)), srcB = withWords.filter(b => !isEp(b)), srcP = withWords.filter(isEp);
+  const bookSel = h('select', { id: 'v-book', 'aria-label': 'Source', onchange: e => { V.bookId = e.target.value; V.chapter = ''; renderVocab(); } },
+    h('option', { value: '' }, srcP.length ? 'Tous les livres et épisodes' : 'Tous les livres'),
+    srcP.length ? [srcB.length ? h('optgroup', { label: 'Livres' }, srcB.map(srcOpt)) : null, h('optgroup', { label: 'Podcasts' }, srcP.map(srcOpt))] : srcB.map(srcOpt));
   const chapSel = h('select', { id: 'v-chap', disabled: !V.bookId, onchange: e => { V.chapter = e.target.value; renderVocab(); } },
-    h('option', { value: '' }, V.bookId ? 'Tous les chapitres' : 'Choisis un livre d\'abord'), chapters.map(c => h('option', { value: c, selected: c === V.chapter }, c)));
+    h('option', { value: '' }, V.bookId ? 'Tous les chapitres' : (srcP.length ? 'Choisis un livre ou un épisode d\'abord' : 'Choisis un livre d\'abord')), chapters.map(c => h('option', { value: c, selected: c === V.chapter }, c)));
   const search = h('input', { type: 'search', id: 'v-q', placeholder: 'Chercher (caractères, pinyin, sens)', value: V.q, oninput: e => { if (!e.isComposing) vocabSearch(e.target.value); }, oncompositionend: e => vocabSearch(e.target.value) });
   root.append(h('div', { class: 'vfilters' }, bookSel, chapSel, search));
   root.append(h('div', { class: 'vhead' },
@@ -3623,7 +3982,7 @@ async function renderVocab() {
   for (const v of list) { if (!byBook.has(v.bookId)) byBook.set(v.bookId, new Map()); const m = byBook.get(v.bookId); if (!m.has(v.chapter)) m.set(v.chapter, []); m.get(v.chapter).push(v); }
   for (const [bid, chs] of byBook) {
     const b = bmap.get(bid); const n = [...chs.values()].reduce((a, x) => a + x.length, 0);
-    const g = h('section', { class: 'vgroup' }, h('h2', null, b.title, h('span', { class: 'n' }, `${n} mot${n > 1 ? 's' : ''}`)));
+    const g = h('section', { class: 'vgroup' }, h('h2', null, isEp(b) ? h('span', { class: 'pill', title: 'Épisode de podcast' + (b.author ? ' · ' + b.author : '') }, '播客') : null, b.title, h('span', { class: 'n' }, `${n} mot${n > 1 ? 's' : ''}`)));
     for (const [ch, items] of chs) {
       g.append(h('h3', null, ch));
       for (const v of items) {
@@ -3785,7 +4144,7 @@ const Sync = {
     return r;
   },
   async download(id) { return this.g(`${DRIVE}/${id}?alt=media`); },
-  mime: f => ({ epub: 'application/epub+zip', pdf: 'application/pdf', txt: 'text/plain', html: 'text/html', fb2: 'application/octet-stream', mobi: 'application/x-mobipocket-ebook', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })[f] || 'application/octet-stream',
+  mime: f => ({ podcast: 'application/json', epub: 'application/epub+zip', pdf: 'application/pdf', txt: 'text/plain', html: 'text/html', fb2: 'application/octet-stream', mobi: 'application/x-mobipocket-ebook', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })[f] || 'application/octet-stream',
   async fetchBookFile(book, files) {
     files = files || await this.list(); const f = files.find(x => x.name === `book-${book.id}.${book.format}`);
     if (!f) return null;
@@ -3817,11 +4176,17 @@ const Sync = {
       const [lb0, lv0, tk] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.get('kv', 'tomb')]);
       const samples = new Set(lb0.filter(b => b.sample).map(b => b.id));
       const lb = lb0.filter(b => !samples.has(b.id)), lv = lv0.filter(v => !samples.has(v.bookId)); // the built-in example stays on each device
+      // podcast episodes travel in their own file, never in state.books: a device still on an older version of the app
+      // (which knows no 'podcast' format) would show them as broken books and open the JSON as plain text
+      const ef = byName.get('shujia-episodes.json');
+      const remoteEps = ef ? ((await (await this.download(ef.id)).json()).eps || {}) : {}, remoteEpsWas = JSON.stringify(remoteEps);
+      for (const [id, b] of Object.entries(remote.books || {})) if (isEp(b)) { remoteEps[id] = remoteEps[id] ? this.mergeBook(remoteEps[id], b) : b; delete remote.books[id]; }
       const tomb = Object.assign({}, remote.tomb || {}); for (const [k, v] of Object.entries((tk && tk.map) || {})) tomb[k] = Math.max(tomb[k] || 0, v);
       const lbm = Object.fromEntries(lb.map(b => [b.id, b])), lvm = Object.fromEntries(lv.map(v => [v.id, v]));
-      for (const rec of [...lb, ...lv, ...Object.values(remote.books || {}), ...Object.values(remote.vocab || {})]) if (rec && tomb[rec.id] && (rec.updatedAt || 0) > tomb[rec.id]) delete tomb[rec.id];
-      const books = {}, vocab = {};
-      for (const id of new Set([...Object.keys(lbm), ...Object.keys(remote.books || {})])) if (!tomb[id]) books[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remote.books && remote.books[id]);
+      for (const rec of [...lb, ...lv, ...Object.values(remote.books || {}), ...Object.values(remoteEps), ...Object.values(remote.vocab || {})]) if (rec && tomb[rec.id] && (rec.updatedAt || 0) > tomb[rec.id]) delete tomb[rec.id];
+      const books = {}, vocab = {}, eps = {};
+      for (const id of new Set([...lb.filter(b => !isEp(b)).map(b => b.id), ...Object.keys(remote.books || {})])) if (!tomb[id]) books[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remote.books && remote.books[id]);
+      for (const id of new Set([...lb.filter(isEp).map(b => b.id), ...Object.keys(remoteEps)])) if (!tomb[id]) eps[id] = this.mergeBook(lbm[id] && this.strip(lbm[id]), remoteEps[id]);
       for (const id of new Set([...Object.keys(lvm), ...Object.keys(remote.vocab || {})])) { if (tomb[id]) continue; const a = lvm[id], b = remote.vocab && remote.vocab[id]; vocab[id] = !a ? b : !b ? a : ((b.updatedAt || 0) > (a.updatedAt || 0) ? b : a); }
       // apply deletions and newer records locally
       for (const id of Object.keys(tomb)) {
@@ -3830,7 +4195,7 @@ const Sync = {
         if (lvm[id]) await DB.del('vocab', id, { sync: true });
       }
       let changed = false;
-      for (const [id, b] of Object.entries(books)) {
+      for (const [id, b] of Object.entries(Object.assign({}, books, eps))) {
         const loc = lbm[id];
         if (!loc || JSON.stringify(this.strip(loc)) !== JSON.stringify(b)) {
           const nb = Object.assign({}, b, { cover: loc ? loc.cover : null, stats: loc ? loc.stats : undefined });
@@ -3845,10 +4210,11 @@ const Sync = {
       const body = JSON.stringify({ v: 1, books, vocab, tomb });
       if (!sf || body !== JSON.stringify({ v: 1, books: remote.books || {}, vocab: remote.vocab || {}, tomb: remote.tomb || {} }))
         await this.upload('shujia-state.json', new Blob([JSON.stringify({ v: 1, at: Date.now(), books, vocab, tomb })], { type: 'application/json' }), 'application/json', sf && sf.id);
+      if (ef ? JSON.stringify(eps) !== remoteEpsWas : Object.keys(eps).length) await this.upload('shujia-episodes.json', new Blob([JSON.stringify({ v: 1, at: Date.now(), eps })], { type: 'application/json' }), 'application/json', ef && ef.id);
       await DB.put('kv', { k: 'tomb', map: tomb });
       // covers and book files, each on its own
       const localFiles = new Set(await DB.keys('files')); let failed = 0;
-      for (const b of Object.values(books)) {
+      for (const b of [...Object.values(books), ...Object.values(eps)]) {
         try {
           const loc = await DB.get('books', b.id); if (!loc) continue; const cn = `cover-${b.id}.jpg`;
           if (loc.cover && !byName.has(cn)) await this.upload(cn, loc.cover, 'image/jpeg');
@@ -3857,7 +4223,7 @@ const Sync = {
           if (localFiles.has(b.id) && !byName.has(fn)) { this.setStatus(`Envoi de « ${b.title} »…`); const f = await DB.get('files', b.id); if (f) await this.upload(fn, f.blob, this.mime(b.format)); }
         } catch (e) { console.warn('sync file', b.id, e); failed++; if (/reconnexion/.test(e.message)) throw e; }
       }
-      for (const id of Object.keys(tomb)) for (const nm of ['epub', 'txt', 'pdf', 'mobi', 'fb2', 'docx', 'html'].map(f => `book-${id}.${f}`).concat(`cover-${id}.jpg`)) if (byName.has(nm)) await this.g(`${DRIVE}/${byName.get(nm).id}`, { method: 'DELETE' }).catch(() => {});
+      for (const id of Object.keys(tomb)) for (const nm of ['epub', 'txt', 'pdf', 'mobi', 'fb2', 'docx', 'html', 'podcast'].map(f => `book-${id}.${f}`).concat(`cover-${id}.jpg`)) if (byName.has(nm)) await this.g(`${DRIVE}/${byName.get(nm).id}`, { method: 'DELETE' }).catch(() => {});
       // thematic vocabulary: its own private file, newest version of each reference book wins
       if (THEMES_ON) {
         const tf = byName.get('shujia-themes.json');
@@ -3882,6 +4248,7 @@ const Sync = {
       LS.set('lastSync', Date.now());
       this.setStatus((failed ? `Synchronisé, sauf ${failed} fichier${failed > 1 ? 's' : ''} · ` : 'Synchronisé ') + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       if (changed && !$('#lib').hidden) renderLibrary();
+      if (changed && !$('#pod').hidden) renderPod();
       if (changed && !$('#voc').hidden) renderVocab();
       if (R.book) { R.saved = new Set((await DB.byBook(R.book.id)).map(v => v.simp)); updateVocabCount(); }
     } catch (e) { console.error(e); this.setStatus('Erreur de synchro'); if (interactive) toast('Synchronisation impossible : ' + e.message); }
@@ -3921,18 +4288,270 @@ function showSyncPanel() {
     sto.textContent = `Stockage sur cet appareil : ${p ? 'protégé (le navigateur ne l\u2019efface pas)' : 'non protégé — le navigateur peut l\u2019effacer s\u2019il manque de place'}${e && e.usage ? ' · ' + Math.round(e.usage / 1e6) + ' Mo utilisés' : ''}.`
       + (lost ? ` Le ${new Date(lost.at).toLocaleDateString('fr-FR')}, le navigateur a effacé : ${lost.titles.join(', ')}.` : '');
   });
-  body.append(sto);
+  body.append(sto, podPanel());
   const m = modal('Synchronisation Google Drive', body);
   if (Sync.gisOK === false || location.protocol !== 'https:' && location.hostname !== 'localhost') st.textContent = 'La synchronisation ne fonctionne que sur la version en ligne de l\'appli (GitHub Pages).';
 }
 $('#sync-btn').addEventListener('click', () => { if (Sync.enabled() && !Sync.token() && Sync.clientId()) Sync.run(true); else showSyncPanel(); });
+
+/* ================= Podcasts tab (private GitHub repo: episode list, transcripts, ordering a transcription) ================= */
+// No podcast content lives in this public app. The feed list and transcripts are read from the owner's private repo with a
+// fine-grained token kept in this browser only (LS 'ghToken', never in the Drive state); the transcription itself is a
+// GitHub Actions workflow in that repo, which the app can start. Episodes saved here stay readable without the token.
+const Pod = {
+  REPO: 'tbrapor-arch/shujia-private', WF: 'podcast-transcribe.yml',
+  api(p) { return `https://api.github.com/repos/${this.REPO}${p}`; },
+  token() { return LS.get('ghToken', ''); },
+  // token saved and the last check could read the repo (kept, so the tab shows offline)
+  on() { return !!this.token() && LS.get('podOn', false); },
+  refreshTab(hasEp) {
+    if (hasEp != null) LS.set('podHasEp', !!hasEp);
+    $('#nav-pod').hidden = !(this.on() || LS.get('podHasEp', false));
+  },
+  fail(r, what) {
+    const s = r.status, e = new Error();
+    if (s === 401) e.message = 'GitHub refuse le jeton : il est expiré, révoqué ou mal copié.';
+    else if (s === 403 && r.headers.get('x-ratelimit-remaining') === '0') e.message = 'Trop de requêtes vers GitHub : réessaie dans une heure.';
+    else if (s === 403) e.message = what === 'dispatch' ? 'Le jeton ne peut pas lancer de transcription : donne-lui la permission « Actions : Read and write » sur le dépôt shujia-private.'
+      : 'Le jeton n’a pas le droit de lire le dépôt : il lui faut la permission « Contents : Read-only » sur shujia-private.';
+    else if (s === 404) e.message = what === 'repo' ? 'Dépôt « shujia-private » introuvable, ou le jeton n’y a pas accès (il doit être limité à ce dépôt).'
+      : what === 'dispatch' ? 'Le workflow de transcription (podcast-transcribe.yml) est introuvable dans le dépôt.' : `Fichier absent du dépôt : ${what}`;
+    else if (s === 422 && what === 'dispatch') e.message = 'GitHub a refusé la demande de transcription (422) : le workflow attend-il bien « show » et « episode » ?';
+    else e.message = `GitHub a répondu ${s}.`;
+    e.status = s; return e;
+  },
+  async req(url, what, opts = {}) {
+    const t = this.token(); if (!t) throw Object.assign(new Error('Aucun jeton GitHub : ajoute-le dans ☁ Synchro › Podcasts.'), { status: 0 });
+    let r;
+    try { r = await fetch(url, Object.assign({ cache: 'no-store' }, opts, { headers: Object.assign({ Authorization: 'Bearer ' + t, Accept: 'application/vnd.github+json' }, opts.headers || {}) })); }
+    catch { throw Object.assign(new Error('GitHub n’est pas joignable (pas de connexion ?).'), { status: 0, offline: true }); }
+    if (!r.ok) throw this.fail(r, what);
+    return r;
+  },
+  async check() {
+    if (!this.token()) { LS.set('podOn', false); this.refreshTab(); return { ok: false, msg: 'Aucun jeton enregistré.' }; }
+    try { await this.req(this.api(''), 'repo'); LS.set('podOn', true); this.refreshTab(); return { ok: true, msg: 'Accès au dépôt vérifié : l’onglet Podcasts est disponible.' }; }
+    catch (e) { if (!e.offline) LS.set('podOn', false); this.refreshTab(); return { ok: false, offline: !!e.offline, msg: e.message }; }
+  },
+  // a file of the repo, exact bytes (the git hash of a stored transcript is compared with the repo's)
+  async blob(path) { return (await this.req(this.api('/contents/' + path.split('/').map(encodeURIComponent).join('/') + '?ref=main'), path, { headers: { Accept: 'application/vnd.github.raw' } })).blob(); },
+  async get(path) { const b = await this.blob(path); try { return JSON.parse(await b.text()); } catch { throw new Error(`Fichier illisible dans le dépôt : ${path}`); } },
+  // name → git sha of a folder's files (one request for all episodes of a show)
+  async list(dir) { const r = await (await this.req(this.api('/contents/' + dir.split('/').map(encodeURIComponent).join('/') + '?ref=main'), dir)).json(); return new Map((Array.isArray(r) ? r : []).map(f => [f.name, f.sha])); },
+  async dispatch(show, key) {
+    await this.req(this.api(`/actions/workflows/${this.WF}/dispatches`), 'dispatch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: 'main', inputs: { show, episode: key } }) });
+  }
+};
+const PV = { shows: null, show: '', feed: null, files: null, msg: '', bad: false, timer: 0, errs: {} };
+// transcriptions ordered from this device and not finished yet: 'show/key' → { at, stage, percent, seen }
+const podPending = () => LS.get('podPending', {});
+const setPodPending = m => LS.set('podPending', m);
+async function showPodcasts() {
+  if (R.book) closeReader(true);
+  show('pod'); window.scrollTo(0, 0);
+  // the cached list first: the tab opens at once, offline too; then refreshed from the repo
+  const cs = await DB.get('kv', 'pod:shows').catch(() => null); if (cs && !PV.shows) PV.shows = cs.v;
+  PV.show = LS.get('podShow', '') || (PV.shows && PV.shows[0] && PV.shows[0].id) || '';
+  const cf = PV.show ? await DB.get('kv', 'pod:feed:' + PV.show).catch(() => null) : null; if (cf && (!PV.feed || PV.feed.show !== PV.show)) PV.feed = cf.v;
+  await renderPod();
+  if (Pod.token()) podRefresh();
+}
+async function podRefresh() {
+  PV.msg = 'Mise à jour de la liste…'; PV.bad = false; podMsg();
+  try {
+    const shows = await Pod.get('shows.json'); if (!Array.isArray(shows)) throw new Error('shows.json : liste attendue');
+    PV.shows = shows.filter(x => x && x.id); DB.put('kv', { k: 'pod:shows', v: PV.shows }).catch(() => {});
+    if (!PV.shows.some(x => x.id === PV.show)) PV.show = PV.shows[0] ? PV.shows[0].id : '';
+    if (PV.show) {
+      const feed = await Pod.get(`podcast/${PV.show}/feed.json`);
+      PV.feed = feed; DB.put('kv', { k: 'pod:feed:' + PV.show, v: feed }).catch(() => {});
+      // which saved episodes have a newer transcript in the repo: only asked when some are saved
+      const eps = (await DB.all('books')).filter(b => isEp(b) && b.pod.show === PV.show);
+      PV.files = eps.length ? await Pod.list(`podcast/${PV.show}`).catch(() => null) : null;
+    }
+    PV.msg = ''; Pod.on() || Pod.check();
+  } catch (e) { console.warn('podcasts', e); PV.msg = e.message + (PV.feed ? ' Liste affichée : la dernière enregistrée.' : ''); PV.bad = true; }
+  if (!$('#pod').hidden) await renderPod();
+  if (Object.keys(podPending()).length) podPoll(true); else podPollLater();
+}
+function podMsg() { const m = $('#pod-msg'); if (m) { m.textContent = PV.msg; m.hidden = !PV.msg; m.classList.toggle('bad', PV.bad); } }
+const STAGE = { download: 'téléchargement de l’audio', asr: 'reconnaissance vocale', speakers: 'locuteurs', done: 'terminé', error: 'échec' };
+function podPollLater() { clearTimeout(PV.timer); if ($('#pod').hidden || !Object.keys(podPending()).length) return; PV.timer = setTimeout(() => podPoll(false), 60000); }
+// every minute while the tab is open: progress file of each ordered episode, then the feed (tr turns true at the end)
+async function podPoll(feedFresh) {
+  clearTimeout(PV.timer);
+  if ($('#pod').hidden) return;
+  if (document.hidden) return podPollLater();
+  const pend = podPending(), done = [];
+  for (const [id, p] of Object.entries(pend)) {
+    const [show, key] = [id.slice(0, id.indexOf('/')), id.slice(id.indexOf('/') + 1)];
+    try { const pr = await Pod.get(`podcast/${show}/progress-${key}.json`); Object.assign(p, { stage: pr.stage || '', percent: +pr.percent || 0, msg: pr.msg || '', seen: true }); }
+    catch (e) { if (e.status !== 404) continue; } // 404: not started yet, or already finished (the file is deleted at the end)
+    if (p.stage === 'error') { PV.errs[id] = 'La transcription a échoué' + (p.msg ? ` : ${p.msg}` : '.') + ' Tu peux la relancer.'; done.push(id); }
+    else if (!p.seen && Date.now() - p.at > 3 * 3600e3) { PV.errs[id] = 'Pas de nouvelles de la transcription depuis 3 heures : vérifie l’onglet Actions du dépôt.'; done.push(id); }
+  }
+  try {
+    if (!feedFresh && PV.show) { const feed = await Pod.get(`podcast/${PV.show}/feed.json`); PV.feed = feed; DB.put('kv', { k: 'pod:feed:' + PV.show, v: feed }).catch(() => {}); }
+    const show = PV.show;
+    for (const ep of (PV.feed && PV.feed.episodes) || []) {
+      const id = `${show}/${ep.key}`; if (!pend[id] || !ep.tr) continue;
+      done.push(id); delete PV.errs[id];
+      toast(`Transcription prête : « ${ep.title} »`, { label: 'Ajouter', fn: () => podAdd(show, ep) });
+    }
+  } catch {}
+  const now = podPending(); for (const [id, p] of Object.entries(pend)) if (now[id]) now[id] = p; done.forEach(id => delete now[id]); setPodPending(now);
+  if (!$('#pod').hidden) await renderPod();
+  podPollLater();
+}
+// download a transcript from the repo and keep it as an episode (same path as importing the .json by hand)
+async function podAdd(show, ep, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Téléchargement…'; }
+  try { const b = await Pod.blob(`podcast/${show}/${ep.key}.json`); await importFiles([new File([b], ep.key + '.json', { type: 'application/json' })]); }
+  catch (e) { toast('Ajout impossible : ' + e.message); }
+  if (!$('#pod').hidden) renderPod();
+}
+// newer transcript in the repo: replace the stored file, keep the id, position, vocabulary and notes
+async function podUpdate(book, show, ep, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Mise à jour…'; }
+  try {
+    const b = await Pod.blob(`podcast/${show}/${ep.key}.json`), file = new File([b], ep.key + '.json', { type: 'application/json' });
+    const meta = await importPodcastJson(file);
+    await DB.put('files', { id: book.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
+    await DB.del('kv', 'text:' + book.id);
+    const fresh = await DB.get('books', book.id); if (!fresh) return;
+    fresh.pod = meta.pod; fresh.size = file.size; delete fresh.stats;
+    await DB.put('books', fresh); StatsQ.add(book.id);
+    // the Drive copy is replaced on the next sync (files are only sent when absent)
+    if (Sync.connected()) { try { const f = (await Sync.list()).find(x => x.name === `book-${book.id}.podcast`); if (f) await Sync.g(`${DRIVE}/${f.id}`, { method: 'DELETE' }); Sync.dirty(); } catch (e) { console.warn(e); } }
+    toast(`« ${fresh.title} » mis à jour.`);
+  } catch (e) { toast('Mise à jour impossible : ' + e.message); }
+  if (!$('#pod').hidden) renderPod();
+}
+function podAskTranscribe(show, ep) {
+  const err = h('p', { class: 'pod-msg bad', hidden: true, style: 'margin:0' });
+  const go = h('button', { class: 'btn primary', onclick: async () => {
+    go.disabled = true; go.textContent = 'Envoi…'; err.hidden = true;
+    try {
+      await Pod.dispatch(show, ep.key);
+      const m2 = podPending(); m2[`${show}/${ep.key}`] = { at: Date.now(), stage: '', percent: 0, seen: false }; setPodPending(m2); delete PV.errs[`${show}/${ep.key}`];
+      m.close(); toast('Transcription demandée.'); await renderPod(); podPollLater();
+    } catch (e) { err.textContent = e.message; err.hidden = false; go.disabled = false; go.textContent = 'Réessayer'; }
+  } }, 'Transcrire');
+  const m = modal('Transcrire cet épisode ?', h('div', { class: 'pb' },
+    h('p', { style: 'margin:0' }, `« ${ep.title} »${ep.dur ? ` (${fmtDur(ep.dur)})` : ''} sera transcrit automatiquement par GitHub Actions, dans ton dépôt privé. Compte environ 15 à 30 minutes ; tu peux fermer l’appli entre-temps.`),
+    err, h('div', { class: 'confirm-row' }, go, h('button', { class: 'btn', onclick: () => m.close() }, 'Annuler'))));
+}
+// remove a saved episode, with its words (same question as for a book)
+function podAskDelete(b, n) {
+  const m = modal('Supprimer cet épisode ?', h('div', { class: 'pb' },
+    h('p', { style: 'margin:0' }, n ? `« ${b.title} » et ses ${n} mot${n > 1 ? 's' : ''} de vocabulaire seront supprimés.` : `« ${b.title} » sera supprimé de tes épisodes.`),
+    h('div', { class: 'confirm-row' }, h('button', { class: 'btn small danger', onclick: async () => {
+      if (PA.id === epKey(b)) paStop();
+      await DB.del('books', b.id); await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id);
+      await DB.delMany('vocab', (await DB.byBook(b.id)).map(v => v.id));
+      paPos.set(epKey(b), null);
+      m.close(); toast('Épisode supprimé.'); renderPod(); renderLibrary();
+    } }, n ? 'Oui, supprimer l’épisode et ses mots' : 'Oui, supprimer'), h('button', { class: 'btn small', onclick: () => m.close() }, 'Annuler'))));
+}
+function podMarkPlaying() { $$('#pod .pplay').forEach(x => x.setAttribute('aria-pressed', String(PA.host === 'pod' && PA.id === x.dataset.id))); }
+let podBusy = null, podAgain = false;
+function renderPod() {
+  if ($('#pod').hidden) return Promise.resolve();
+  if (podBusy) { podAgain = true; return podBusy; }
+  podBusy = (async () => { try { do { podAgain = false; await renderPodNow(); } while (podAgain && !$('#pod').hidden); } finally { podBusy = null; } })();
+  return podBusy;
+}
+async function renderPodNow() {
+  const [all, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
+  const eps = all.filter(isEp).sort((a, b) => (b.lastRead || b.addedAt) - (a.lastRead || a.addedAt)), local = new Set(fileIds);
+  Pod.refreshTab(eps.length > 0);
+  const vn = {}; vocab.forEach(v => { vn[v.bookId] = (vn[v.bookId] || 0) + 1; });
+  const byKey = new Map(eps.map(b => [epKey(b), b]));
+  // local transcript hashes, for the "Mettre à jour" check (computed once per stored file)
+  const shaOf = async b => { if (!local.has(b.id)) return ''; const f = await DB.get('files', b.id); if (!f) return ''; if (!f.sha) { f.sha = await gitSha(f.blob); if (f.sha) DB.put('files', f).catch(() => {}); } return f.sha; };
+  const root = $('#pod-main'); const parts = [];
+  parts.push(h('nav', { class: 'topnav' },
+    h('div', { class: 'brand' }, h('span', { class: 'hz' }, '播客'), h('span', { class: 'py' }, 'Podcasts')),
+    h('button', { class: 'btn', onclick: () => { show('lib'); renderLibrary(); } }, '← Bibliothèque')));
+  // ---- Mes épisodes ----
+  parts.push(h('h2', { class: 'vgroup-h', style: 'font-family:var(--f-serif);font-size:18px;margin:4px 0 6px' }, 'Mes épisodes'));
+  if (!eps.length) parts.push(h('p', { class: 'muted', style: 'margin:0 0 18px;font-size:13.5px' }, 'Aucun épisode enregistré. Ajoute-en un depuis la liste ci-dessous, ou importe une transcription (.json) avec « Importer un livre ».'));
+  else parts.push(h('div', { class: 'pod-list', style: 'margin-bottom:24px' }, eps.map(b => {
+    const pos = paPos.get(epKey(b)), dur = +(b.pod && b.pod.dur) || 0, pct = pos && dur ? Math.min(100, Math.round(100 * pos / dur)) : 0, n = vn[b.id] || 0;
+    const st = b.stats && b.stats.v === STATS_V ? `${fmtWan(b.stats.chars)} · difficulté ${diffLevel(b.stats)}/6` : '';
+    return h('div', { class: 'pod-ep' },
+      h('button', { class: 'pplay', 'aria-label': `Ouvrir « ${b.title} »`, title: 'Ouvrir', onclick: () => openBook(b.id) }, h('span', { class: 'zh', style: 'font-size:15px' }, '读')),
+      h('div', null,
+        h('h3', null, h('a', { href: '#', style: 'color:inherit;text-decoration:none', onclick: e => { e.preventDefault(); openBook(b.id); } }, b.title)),
+        h('div', { class: 'm' }, [b.author, fmtDay(b.date), dur ? fmtDur(dur) : '', pct ? `écouté à ${pct} %` : '', b.lastRead ? 'ouvert le ' + new Date(b.lastRead).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'jamais ouvert'].filter(Boolean).join(' · ')),
+        st || n ? h('div', { class: 'm' }, [st, n ? `${n} mot${n > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')) : null,
+        h('div', { class: 'a' },
+          h('button', { class: 'btn small primary', onclick: () => openBook(b.id) }, b.progress > 0.01 ? `Reprendre (${Math.round(b.progress * 100)} %)` : 'Ouvrir'),
+          n ? h('button', { class: 'btn small', onclick: () => showVocab({ bookId: b.id }) }, 'Vocabulaire') : null,
+          !local.has(b.id) ? h('span', { class: 'pill toread', title: 'La transcription est sur Google Drive ; elle sera téléchargée à l’ouverture' }, '☁ Drive') : null,
+          h('button', { class: 'btn small ghost danger', onclick: () => podAskDelete(b, n) }, 'Supprimer'))));
+  })));
+  // ---- the show's feed ----
+  if (!Pod.token()) {
+    parts.push(h('p', { class: 'muted', style: 'font-size:13.5px' }, 'Pour voir les nouveaux épisodes et demander des transcriptions, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.'));
+    root.replaceChildren(...parts); podMarkPlaying(); return;
+  }
+  const shows = PV.shows || [];
+  parts.push(h('h2', { style: 'font-family:var(--f-serif);font-size:18px;margin:4px 0 6px' }, (shows.find(x => x.id === PV.show) || {}).title || 'Épisodes'));
+  if (shows.length > 1) parts.push(h('div', { class: 'seg', role: 'group', 'aria-label': 'Émission', style: 'margin-bottom:10px' }, shows.map(x => h('button', { 'aria-pressed': String(x.id === PV.show), onclick: async () => {
+    PV.show = x.id; LS.set('podShow', x.id); const cf = await DB.get('kv', 'pod:feed:' + x.id).catch(() => null); PV.feed = cf ? cf.v : null; PV.files = null; renderPod(); podRefresh();
+  } }, x.title || x.id))));
+  parts.push(h('p', { id: 'pod-msg', class: 'pod-msg' + (PV.bad ? ' bad' : ''), role: 'status', hidden: !PV.msg }, PV.msg));
+  const feed = PV.feed && PV.feed.show === PV.show ? PV.feed : null, pend = podPending();
+  if (!feed) parts.push(h('p', { class: 'muted' }, PV.bad ? '' : 'Chargement de la liste…'));
+  else {
+    const list = h('div', { class: 'pod-list' });
+    const rows = (feed.episodes || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    for (const ep of rows) {
+      const id = `${PV.show}/${ep.key}`, book = byKey.get(id), p = pend[id];
+      const a = h('div', { class: 'a' });
+      if (book) {
+        a.append(h('button', { class: 'btn small primary', onclick: () => openBook(book.id) }, 'Ouvrir'));
+        const remote = PV.files && PV.files.get(ep.key + '.json');
+        if (remote) shaOf(book).then(sha => { if (sha && sha !== remote && a.isConnected) a.append(h('button', { class: 'btn small ghost', title: 'Une transcription plus récente est dans le dépôt (ta position et tes mots sont gardés)', onclick: e => podUpdate(book, PV.show, ep, e.currentTarget) }, 'Mettre à jour')); });
+      } else if (ep.tr) a.append(h('button', { class: 'btn small primary', onclick: e => podAdd(PV.show, ep, e.currentTarget) }, 'Ajouter à mes épisodes'));
+      else if (p) a.append(h('span', { class: 'st', role: 'status' }, 'Transcription demandée… (environ 15 à 30 min)' + (p.stage ? ` · ${STAGE[p.stage] || p.stage}${p.percent ? ` ${p.percent} %` : ''}` : '')));
+      else a.append(h('button', { class: 'btn small', onclick: () => podAskTranscribe(PV.show, ep) }, 'Transcrire'));
+      if (PV.errs[id]) a.append(h('span', { class: 'st bad' }, PV.errs[id]));
+      list.append(h('div', { class: 'pod-ep' },
+        httpURL(ep.audio) ? h('button', { class: 'pplay', 'data-id': id, 'aria-pressed': 'false', 'aria-label': `Écouter « ${ep.title} »`, title: 'Écouter (sans transcription)', onclick: () => paPlayEp(PV.show, ep) }, '▶') : h('span'),
+        h('div', null, h('h3', null, ep.title), h('div', { class: 'm' }, [fmtDay(ep.date), ep.dur ? fmtDur(ep.dur) : '', ep.chapters && ep.chapters.length ? `${ep.chapters.length} chapitres` : ''].filter(Boolean).join(' · ')), a)));
+    }
+    if (!rows.length) list.append(h('p', { class: 'muted' }, 'Aucun épisode dans le flux.'));
+    parts.push(list);
+  }
+  root.replaceChildren(...parts); podMarkPlaying();
+}
+// section of the ☁ Synchro panel: the GitHub token (separate from Google Drive, never synced)
+function podPanel() {
+  const st = h('p', { id: 'gh-status', class: 'muted', role: 'status', style: 'margin:0;font-size:13.5px' }, Pod.token() ? (Pod.on() ? 'Jeton enregistré · accès au dépôt vérifié.' : 'Jeton enregistré · accès au dépôt non vérifié.') : 'Aucun jeton enregistré.');
+  const inp = h('input', { type: 'password', id: 'gh-token', autocomplete: 'off', spellcheck: 'false', placeholder: Pod.token() ? '•••••••• (enregistré)' : 'github_pat_…', 'aria-label': 'Jeton GitHub' });
+  const save = h('button', { class: 'btn primary', onclick: async () => {
+    const v = inp.value.trim(); if (!v) { st.textContent = 'Colle d’abord le jeton.'; return; }
+    LS.set('ghToken', v); inp.value = ''; inp.placeholder = '•••••••• (enregistré)'; st.textContent = 'Vérification…';
+    const r = await Pod.check(); st.textContent = r.offline ? 'Jeton enregistré ; vérification impossible hors connexion.' : r.msg; rm.hidden = false;
+  } }, 'Enregistrer le jeton');
+  const rm = h('button', { class: 'btn', hidden: !Pod.token(), onclick: () => {
+    LS.set('ghToken', ''); LS.set('podOn', false); Pod.refreshTab(); rm.hidden = true; inp.placeholder = 'github_pat_…'; st.textContent = 'Jeton retiré de ce navigateur. Tes épisodes enregistrés restent lisibles.';
+    if (!$('#pod').hidden) renderPod();
+  } }, 'Retirer');
+  return h('section', { style: 'display:grid;gap:8px;padding-top:14px;border-top:1px solid var(--line)' },
+    h('h3', { style: 'margin:0;font-size:15px' }, 'Podcasts (dépôt privé)'),
+    h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Jeton GitHub « fine-grained » limité au dépôt shujia-private, avec les permissions Contents : Read-only et Actions : Read and write.', h('br'), 'Le jeton reste dans ce navigateur et n’est envoyé qu’à GitHub.'),
+    inp, h('div', { class: 'confirm-row' }, save, rm), st);
+}
 
 /* ================= Android back button ================= */
 // while anything sits above the library (reader, vocabulary, a sheet, the pop-up), one extra history entry
 // makes the phone's back gesture close it instead of leaving the app
 const Back = {
   guard: false, skip: false, t: 0,
-  open() { return !!topLayer() || (!$('#pop').hidden && (isTouch() || P.pinned)) || !$('#notepop').hidden || !$('#reader').hidden || !$('#voc').hidden || !$('#thm').hidden; },
+  open() { return !!topLayer() || (!$('#pop').hidden && (isTouch() || P.pinned)) || !$('#notepop').hidden || !$('#reader').hidden || !$('#voc').hidden || !$('#thm').hidden || !$('#pod').hidden; },
   sync() {
     const open = this.open();
     if (open && !this.guard) { try { history.pushState({ shujia: 1 }, ''); this.guard = true; } catch {} }
@@ -3948,20 +4567,24 @@ addEventListener('popstate', () => {
   else if (!$('#notepop').hidden) $('#notepop').hidden = true;
   else if (!$('#pop').hidden) hidePop();
   else if (!$('#voc').hidden || !$('#thm').hidden) { if (V.from === 'reader' && R.book) { show('reader'); restorePos(); } else { show('lib'); renderLibrary(); } }
-  else if (!$('#reader').hidden) closeReader(false);
+  else if (!$('#pod').hidden) { show('lib'); renderLibrary(); }
+  else if (!$('#reader').hidden) closeReader(false); // from an episode: back to the Podcasts tab
   Back.soon();
 });
 new MutationObserver(() => Back.soon()).observe(document.body, { childList: true });
-for (const id of ['reader', 'voc', 'thm', 'pop', 'notepop']) new MutationObserver(() => Back.soon()).observe($('#' + id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['reader', 'voc', 'thm', 'pod', 'pop', 'notepop']) new MutationObserver(() => Back.soon()).observe($('#' + id), { attributes: true, attributeFilter: ['hidden'] });
 
 /* ================= navigation & boot ================= */
 function show(view) {
-  for (const id of ['lib', 'voc', 'thm', 'reader']) $('#' + id).hidden = id !== view;
+  for (const id of ['lib', 'voc', 'thm', 'pod', 'reader']) $('#' + id).hidden = id !== view;
   document.body.classList.toggle('reading', view === 'reader');
   if (view !== 'reader') { hidePop(); ttsStop(true); $('#notepop').hidden = true; }
+  if (PA.host && PA.host !== view) paStop(); // the audio belongs to the view that started it
+  if (view !== 'pod') clearTimeout(PV.timer); // no polling while the tab is not shown
 }
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
 $('#nav-log').addEventListener('click', () => showJournal());
+$('#nav-pod').addEventListener('click', () => showPodcasts());
 $('#nav-thm').hidden = !THEMES_ON;
 if (THEMES_ON) $('#nav-thm').addEventListener('click', () => showThemes());
 $$('#theme-seg button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.v)));
@@ -4031,6 +4654,7 @@ const SAMPLE = `第一章 雨天
     localStorage.setItem('shujia.fileIds', JSON.stringify([...now]));
   } catch {}
   for (const b of books) { // books imported before titles were cleaned
+    if (isEp(b)) continue;
     if (/\s--\s/.test(b.title || '') || /^(unknown|未知|佚名|anonymous)$/i.test(b.author || '')) { Object.assign(b, cleanMeta(b.title, b.author)); await DB.put('books', b); }
   }
   const hosted = !!document.querySelector('link[rel=manifest]');
@@ -4046,6 +4670,7 @@ const SAMPLE = `第一章 雨天
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
   setTimeout(() => loadZip().catch(() => {}), 2500);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
+  Pod.refreshTab(books.some(isEp)); if (Pod.token() && navigator.onLine !== false) setTimeout(() => Pod.check(), 2000); // the token may have expired since
   try { if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && document.querySelector('link[rel=manifest]')) { const hadController = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(reg => { const up = () => reg.update().catch(() => {}); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') up(); }); setInterval(up, 30 * 60 * 1000); }).catch(() => {});
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController) return; if (R.book || topLayer() || Sync.busy || importing) toast('Nouvelle version de l\'appli disponible.', { label: 'Recharger', fn: () => location.reload() }); else location.reload(); }); } } catch {}
 })();

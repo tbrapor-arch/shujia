@@ -1,5 +1,5 @@
 // 书架 service worker: the app works offline once opened
-const V = 'shujia-4b9956a6';
+const V = 'shujia-0479402d';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 // libraries and data never change under the same address: they live in a cache kept across updates, filled at install so the app opens books offline
 const STATIC = 'shujia-static-1';
@@ -31,5 +31,6 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
+  // any other origin is left to the network: podcast audio streams (range requests) and the GitHub API are never cached here
   if (u.hostname === 'cdnjs.cloudflare.com' || u.hostname === 'fonts.googleapis.com' || u.hostname === 'fonts.gstatic.com') e.respondWith(cacheFirst(req));
 });
