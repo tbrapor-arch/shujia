@@ -155,6 +155,35 @@ details.pod-sec[open] > summary .pod-sh::before { transform: rotate(90deg); }
 details.pod-sec:not([open]) { margin-bottom: 4px; }
 .pod-msg.bad { color: var(--seal); }
 #pod .tts { z-index: 45; }
+/* TV tab (dramas from the channels' own YouTube uploads, read with their subtitle track) */
+.tv-show-m { font-size: 12.5px; color: var(--muted); margin: -2px 0 6px; }
+.tv-show-m a { color: var(--accent); }
+.pod-ep .pplay.tvp { font-size: 13px; }
+.tv-add { display: grid; gap: 10px; }
+.tv-add label { display: grid; gap: 4px; font-size: 13.5px; }
+/* TV episode in the reader: the picture under the bar, sticky while the lines scroll (beside the text on wide screens) */
+#tvbox { position: fixed; z-index: 39; left: 0; right: 0; top: calc(var(--bar-h) + env(safe-area-inset-top, 0px) + 1px); height: var(--tvh); background: #000; color: #fff; overflow: hidden; }
+#reader.tv { --tvh: min(56.25vw, 38vh); }
+#reader.tv .book { padding-top: calc(var(--bar-h) + var(--tvh) + 28px); }
+#reader.tv .book section { scroll-margin-top: calc(var(--bar-h) + var(--tvh) + 16px); }
+#reader.tv .peek { top: calc(var(--bar-h) + var(--tvh) + env(safe-area-inset-top, 0px) + 1px); }
+#tvbox iframe, #tvbox .tv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#tvbox .tv-poster { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 8px; padding: 10px 50px; text-align: center; font-size: 13px; color: #ddd; background: #111; }
+#tvbox .tv-poster .tv-go { width: 60px; height: 60px; border-radius: 99px; border: 0; background: rgba(255,255,255,.92); color: #111; font-size: 22px; display: grid; place-items: center; padding: 0 0 0 4px; }
+#tvbox .tv-poster .tv-ttl { font-family: var(--f-serif); font-size: 15px; color: #fff; max-width: 32em; }
+#tvbox .tv-poster.bad .tv-ttl { font-family: inherit; font-size: 13.5px; line-height: 1.45; }
+#tvbox .tv-poster a { color: #9fd6c4; font-weight: 600; }
+#tvbox .tv-size { position: absolute; z-index: 2; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 8px; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; display: grid; place-items: center; padding: 0; }
+#reader.tv.tv-mini { --tvh: 0px; }
+#reader.tv.tv-mini #tvbox { left: auto; right: 8px; top: calc(var(--bar-h) + env(safe-area-inset-top, 0px) + 8px); width: min(44vw, 240px); height: auto; aspect-ratio: 16 / 9; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+#reader.tv.tv-mini #tvbox .tv-poster { padding: 4px 40px 4px 6px; }
+#reader.tv.tv-mini #tvbox .tv-poster .tv-ttl, #reader.tv.tv-mini #tvbox .tv-poster.bad a { display: none; }
+#reader.tv.tv-mini #tvbox .tv-poster .tv-go { width: 40px; height: 40px; font-size: 16px; }
+@media (min-width: 1100px) {
+  #reader.tv { --tvh: 0px; }
+  #reader.tv .book { margin-left: max(16px, calc(50vw - 34em + 40px)); margin-right: 0; }
+  #reader.tv:not(.tv-mini) #tvbox { top: calc(var(--bar-h) + env(safe-area-inset-top, 0px) + 16px); right: 16px; left: max(calc(50vw + 64px), min(calc(56px + 34 * var(--rs)), calc(100vw - 336px))); height: auto; aspect-ratio: 16 / 9; border-radius: 10px; }
+}
 #pod:has(#pod-bar:not([hidden])) { padding-bottom: 180px; } /* the last episode stays reachable above the player */
 .book-card h3 { margin: 0; font-family: var(--f-serif); font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .book-card .au { margin: 0; font-size: 13px; color: var(--muted); }
@@ -566,10 +595,11 @@ body.reading { background: var(--rbg); }
       <button class="tab" id="nav-log" role="tab" aria-selected="false">Journal</button>
       <button class="tab" id="nav-thm" role="tab" aria-selected="false" hidden>Thèmes</button>
       <button class="tab" id="nav-pod" role="tab" aria-selected="false" hidden>Podcasts</button>
+      <button class="tab" id="nav-tv" role="tab" aria-selected="false" hidden>TV</button>
     </div>
     <button class="btn" id="sync-btn" title="Synchronisation Google Drive"><span id="sync-dot" aria-hidden="true">☁</span> <span id="sync-lbl">Synchro</span></button>
     <button class="btn primary" id="import-btn">＋ Importer un livre</button>
-    <input type="file" id="file-in" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.kf8,.prc,.pdb,.fb2,.zip,.docx,.html,.htm,.xhtml,.json,application/epub+zip,text/plain,application/pdf,application/json" multiple hidden>
+    <input type="file" id="file-in" accept=".epub,.txt,.pdf,.mobi,.azw,.azw3,.kf8,.prc,.pdb,.fb2,.zip,.docx,.html,.htm,.xhtml,.json,.srt,.vtt,application/epub+zip,text/plain,application/pdf,application/json" multiple hidden>
   </nav>
   <div class="shelf-head">
     <div class="tabs" id="status-tabs"></div>
@@ -586,6 +616,7 @@ body.reading { background: var(--rbg); }
 
 <div id="voc" class="wrap" hidden></div>
 <div id="thm" class="wrap" hidden></div>
+<div id="tv" class="wrap" hidden><div id="tv-main"></div></div>
 <div id="pod" class="wrap" hidden><div id="pod-main"></div><div class="tts" id="pod-bar" hidden><div class="tts-in pa" id="pod-bar-in"></div></div></div>
 
 <div id="reader" hidden>
@@ -599,6 +630,7 @@ body.reading { background: var(--rbg); }
     <button class="icon-btn" id="r-py" aria-pressed="false" title="Afficher le pinyin (P)" aria-label="Afficher le pinyin"><span style="font-size:13px;font-weight:600">pīn</span></button>
     <button class="icon-btn" id="r-set" title="Affichage" aria-label="Réglages d'affichage"><span class="zh" style="font-size:15px">字</span></button>
   </div><div class="rprog" id="r-prog"></div></div><div id="r-pct" hidden></div>
+  <div id="tvbox" hidden></div>
   <div class="peek" id="peek" hidden><div class="peek-in">
     <span>Aperçu d'un passage. Ta position de lecture n'a pas changé.</span>
     <button class="btn small primary" id="peek-back">Revenir à ma lecture</button>
@@ -1035,10 +1067,11 @@ async function importFiles(files) {
   try { await importFilesNow(files); } finally { importing--; }
 }
 async function importFilesNow(files) {
-  let addedEp = 0;
+  let addedEp = 0, addedTv = 0;
   for (const file of files) {
     const ext = /\.fb2\.zip$/i.test(file.name) ? 'fb2' : (file.name.match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
     const fmt = FORMAT_OF[ext];
+    if (ext === 'srt' || ext === 'vtt') { tvAskAdd(file); continue; } // a subtitle file: a TV episode, once its video is named
     if (ext === 'kfx') { toast('Le format KFX (Kindle récent) est protégé : cherche une version EPUB, MOBI ou AZW3.'); continue; }
     if (['djvu', 'cbz', 'cbr', 'cb7'].includes(ext)) { toast(`Le format .${ext} ne contient que des images de pages : il n'y a pas de texte à lire.`); continue; }
     if (ext === 'umd') { toast('Le format UMD n\'est pas pris en charge : cherche une version EPUB ou TXT.'); continue; }
@@ -1051,22 +1084,23 @@ async function importFilesNow(files) {
       const ep = meta.format === 'podcast'; // a podcast episode: same storage as a book, shown only in the Podcasts tab
       if (!ep) Object.assign(meta, cleanMeta(meta.title, meta.author)); // the feed's title is kept exactly
       const all = await DB.all('books');
-      const existing = ep ? all.find(b => isEp(b) && b.pod.show === meta.pod.show && b.pod.key === meta.pod.key) : all.find(b => !isEp(b) && b.title === meta.title && b.size === file.size);
+      const existing = ep ? all.find(b => isEp(b) && epKey(b) === epKey(meta)) : all.find(b => !isEp(b) && b.title === meta.title && b.size === file.size);
       if (existing) { toast(ep ? `« ${meta.title} » est déjà dans tes épisodes.` : `« ${meta.title} » est déjà dans ta bibliothèque.`); continue; }
-      if (ep) podSetRemoved(`${meta.pod.show}/${meta.pod.key}`, false);
-      const book = Object.assign({ id: ep ? podId(meta.pod.show, meta.pod.key) : uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: ep ? meta.pod.key + '.json' : file.name, sample: !!file.sample }, meta);
+      if (ep) podSetRemoved(epKey(meta), false);
+      const book = Object.assign({ id: ep ? (meta.pod.tv ? tvId : podId)(meta.pod.show, meta.pod.key) : uid(), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: ep ? meta.pod.key + '.json' : file.name, sample: !!file.sample }, meta);
       if (ep) await DB.put('files', { id: book.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha }); else await DB.put('files', { id: book.id, blob: file });
       delete book.sha;
       if (pdfText != null) await DB.put('kv', { k: 'pdftext:' + book.id, v: 1, text: pdfText });
       await DB.put('books', book);
-      if (ep) addedEp++;
+      if (ep) { if (meta.pod.tv) addedTv++; else addedEp++; }
       toast(ep ? `« ${book.title} » ajouté à tes épisodes.` : `« ${book.title} » ajouté.`);
       StatsQ.add(book.id);
     } catch (e) { console.error(e); toast(`Impossible de lire ${file.name} : ${e.message}`); }
   }
   renderLibrary();
   // a transcript imported by hand lands where episodes live
-  if (addedEp) { if ($('#pod').hidden) showPodcasts(); else renderPod(); }
+  if (addedTv && !addedEp) { if ($('#tv').hidden) showTv(); else renderTv(); }
+  else if (addedEp) { if ($('#pod').hidden) showPodcasts(); else renderPod(); }
 }
 
 /* ================= parsing for reading ================= */
@@ -1561,6 +1595,11 @@ function parseTextString(raw) {
 // An episode is stored like a book (books + files stores, format 'podcast', file = the transcript JSON) so the reader,
 // vocabulary, 预习, search and Drive sync work unchanged; but it is shown only in the Podcasts tab, never on the shelf.
 const isEp = b => !!b && b.format === 'podcast';
+// a TV episode (drama from a channel's own YouTube upload, its text = the channel's subtitle track) is an episode too:
+// same stores, same Drive file, never on the shelf; but it lives in the TV tab and its 听 bar drives YouTube's player
+const isTv = b => isEp(b) && !!(b.pod && b.pod.tv);
+const isPod = b => isEp(b) && !isTv(b);
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const mmss = t => { t = Math.max(0, Math.floor(+t || 0)); const h2 = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60, p = n => String(n).padStart(2, '0'); return h2 ? `${h2}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`; };
 const fmtDur = s => { s = +s || 0; if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min'; const m = Math.round(s / 60); return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`; };
 const fmtDay = d => { const x = /^\d{4}-\d{2}-\d{2}/.test(d || '') ? new Date(d.slice(0, 10) + 'T12:00') : null; return x && !isNaN(x) ? x.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : (d || ''); };
@@ -1585,8 +1624,11 @@ async function importPodcastJson(file) {
   if (!podIsTranscript(tr)) throw new Error('ce fichier JSON n’est pas une transcription de podcast (champs « v » et « segs » attendus)');
   if (+tr.v > 1) throw new Error('cette transcription vient d’une version plus récente : recharge l’appli');
   const n = nameParts(file.name), last = tr.segs.length ? +tr.segs[tr.segs.length - 1].e || 0 : 0, sha = await gitSha(file);
+  // contract: exactly one of audio (podcast) / video (TV episode, 11-character YouTube id)
+  const tv = typeof tr.video === 'string';
   return { format: 'podcast', title: String(tr.title || n.title).trim(), author: String(tr.showTitle || tr.show || '').trim(), isbn: '', publisher: '', date: String(tr.date || ''), lang: 'zh', description: '', cover: null,
-    pod: { show: String(tr.show || 'local'), key: String(tr.key || n.title), audio: httpURL(tr.audio), dur: +tr.dur || last, made: String(tr.made || ''), engine: String(tr.engine || ''), clip: tr.clip == null ? null : +tr.clip, en: podEnCount(tr), sha },
+    pod: Object.assign({ show: String(tr.show || 'local'), key: String(tr.key || n.title), audio: tv ? '' : httpURL(tr.audio), dur: +tr.dur || last, made: String(tr.made || ''), engine: String(tr.engine || ''), clip: tr.clip == null ? null : +tr.clip, en: podEnCount(tr), sha },
+      tv ? { tv: true, video: YT_ID.test(tr.video) ? tr.video : '', link: httpURL(tr.link) } : {}),
     sha };
 }
 // speakers by order of first appearance: 甲 乙 丙 丁…, one colour each (tone colours first: they follow the theme)
@@ -1600,6 +1642,8 @@ function podChip(t, sp) {
 // « Lignes » (one row per sentence, with pinyin and English lines) or « Texte » (paragraphs); the reader's choice is kept
 // per device, else Lignes when the episode has English
 const podLayoutFor = hasEn => settings.podLayout === 'lines' || settings.podLayout === 'text' ? settings.podLayout : hasEn ? 'lines' : 'text';
+// a TV episode opens in Lignes (one subtitle per row) unless the reader chose Texte for TV
+const tvLayoutFor = () => settings.tvLayout === 'text' ? 'text' : 'lines';
 async function parsePodcastForReading(blob, layout) {
   let tr; try { tr = JSON.parse(await blob.text()); } catch { throw new Error('transcription illisible'); }
   if (!podIsTranscript(tr)) throw new Error('ce fichier n’est pas une transcription de podcast');
@@ -1608,7 +1652,8 @@ async function parsePodcastForReading(blob, layout) {
     .map(g => ({ s: +g.s, e: isFinite(g.e) && +g.e >= +g.s ? +g.e : +g.s, sp: Number.isInteger(g.sp) && g.sp >= 0 ? g.sp : null, t: g.t, ct: Array.isArray(g.ct) && g.ct.length === g.t.length ? g.ct : null,
       en: typeof g.en === 'string' && g.en.trim() ? g.en.trim() : '' }))
     .sort((a, b) => a.s - b.s); // binary search by time needs them in order
-  const hasEn = segs.some(g => g.en), lines = (layout || podLayoutFor(hasEn)) === 'lines';
+  const tvTr = typeof tr.video === 'string';
+  const hasEn = segs.some(g => g.en), lines = (layout || (tvTr ? tvLayoutFor() : podLayoutFor(hasEn))) === 'lines';
   const end = Math.max(+tr.dur || 0, segs.length ? segs[segs.length - 1].e : 0);
   const multi = (+tr.speakers || 0) > 1 || new Set(segs.map(g => g.sp).filter(x => x != null)).size > 1;
   let chaps = (Array.isArray(tr.chapters) ? tr.chapters : []).filter(c => c && isFinite(c.t)).map(c => ({ t: Math.max(0, +c.t), title: String(c.title || '').trim() }))
@@ -1617,7 +1662,10 @@ async function parsePodcastForReading(blob, layout) {
   if (!chaps.length) { for (let t = 0; t === 0 || t < end; t += 300) chaps.push({ t, title: '' }); note = ' · pas de chapitres : un repère toutes les 5 minutes'; }
   if (segs.length && segs[0].s < chaps[0].t - 0.5) chaps.unshift({ t: 0, title: '', start: true }); // talk before the first mark of the show notes
   const made = tr.made ? fmtDay(String(tr.made)) : '';
-  const meta = ['Transcription automatique (non relue)', [tr.engine, tr.model].filter(Boolean).join(' / '), made, tr.clip ? `extrait de ${tr.clip} min` : ''].filter(Boolean).join(' · ') + note;
+  // TV: the channel's own subtitle track (engine 'subs'), or speech recognition as for podcasts (funasr / whisper)
+  const subs = tvTr && tr.engine === 'subs';
+  const meta = (subs ? ['Sous-titres de la chaîne (YouTube' + (tr.model ? `, piste ${tr.model})` : ')'), tr.en && tr.en.model && /^subs:/.test(tr.en.model) ? 'anglais : sous-titres de la chaîne' : '']
+    : ['Transcription automatique (non relue)', [tr.engine, tr.model].filter(Boolean).join(' / '), made, tr.clip ? `extrait de ${tr.clip} min` : '']).filter(Boolean).join(' · ') + note;
   const sections = [], toc = [], els = new Array(segs.length); let j = 0;
   const ENDS = /[。！？!?…」”』]$/;
   chaps.forEach((c, ci) => {
@@ -1683,8 +1731,8 @@ function renderLibrary() {
 }
 async function renderLibraryNow() {
   const [all, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
-  const books = all.filter(b => !isEp(b)); // podcast episodes live in their own tab: not on the shelf, not in the counts
-  Pod.refreshTab(all.some(isEp));
+  const books = all.filter(b => !isEp(b)); // podcast and TV episodes live in their own tabs: not on the shelf, not in the counts
+  Pod.refreshTab(all.some(isPod)); tvRefreshTab(all.some(isTv));
   const localFiles = new Set(fileIds);
   const vcount = {}; vocab.forEach(v => { vcount[v.bookId] = (vcount[v.bookId] || 0) + 1; });
   const counts = { all: books.length, reading: 0, toread: 0, read: 0, dropped: 0 };
@@ -1753,7 +1801,7 @@ async function saveSheet(b) {
 }
 async function showDetails(id) {
   const b = await DB.get('books', id); if (!b) return;
-  if (isEp(b)) { showPodcasts(); return; } // an episode has no book sheet: it is managed in the Podcasts tab
+  if (isEp(b)) { if (isTv(b)) showTv(); else showPodcasts(); return; } // an episode has no book sheet: it is managed in the Podcasts (or TV) tab
   const n = (await DB.byBook(id)).length;
   const save = async () => { await saveSheet(b); renderLibrary(); };
   const q = encodeURIComponent(b.isbn || `${b.title} ${b.author}`);
@@ -2056,7 +2104,7 @@ const StatsQ = {
           const fresh = await DB.get('books', id); if (!fresh) continue;
           fresh.stats = st; await DB.put('books', fresh, { touch: false });
           if (R.book && R.book.id === id) R.book.stats = st;
-          if (isEp(fresh)) { if (!$('#pod').hidden) renderPod(); } else renderLibrary();
+          if (isEp(fresh)) { if (!$('#pod').hidden) renderPod(); if (!$('#tv').hidden) renderTv(); } else renderLibrary();
         } catch (e) { console.warn('stats', e); this.failed.add(id); }
       }
     } finally { this.running = false; }
@@ -2272,9 +2320,9 @@ async function openBook(id) {
   if (book && !file && Sync.enabled() && !Sync.connected() && Sync.clientId()) { try { await Sync.login(); } catch {} }
   if (book && !file && Sync.connected()) { toast('Téléchargement du livre depuis Google Drive…'); try { file = await Sync.fetchBookFile(book); } catch (e) { console.error(e); } }
   // an episode whose transcript is neither here nor on Drive: the private repo has it
-  if (book && !file && isEp(book) && Pod.token()) { try { file = await podFileFor(book); } catch (e) { console.warn(e); } }
+  if (book && !file && isEp(book) && Pod.token() && book.pod.show !== 'local') { try { file = await podFileFor(book); } catch (e) { console.warn(e); } }
   if (my !== openSeq) return; // another book was opened, or the reader closed, meanwhile
-  if (!book || !file) { toast(isEp(book) && Pod.token() ? 'Transcription introuvable, y compris dans le dépôt (pas de connexion ?).' : Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
+  if (!book || !file) { toast(isEp(book) && Pod.token() ? (isTv(book) ? 'Sous-titres introuvables, y compris dans le dépôt (pas de connexion ?).' : 'Transcription introuvable, y compris dans le dépôt (pas de connexion ?).') : Sync.connected() ? 'Fichier introuvable, y compris sur Google Drive.' : 'Ce livre est sur un autre appareil : connecte Google Drive pour le récupérer.'); return; }
   closeReader(true, true);
   show('reader');
   const bookEl = $('#book'); bookEl.replaceChildren(h('div', { class: 'loading' }, 'Ouverture du livre…'));
@@ -2288,6 +2336,7 @@ async function openBook(id) {
   if (book.status === 'toread') { book.status = 'reading'; if (!book.startDate) book.startDate = today(); }
   book.lastRead = Date.now(); DB.put('books', book);
   const vocab = await DB.byBook(id); if (my !== openSeq) return; R.saved = new Set(vocab.map(v => v.simp)); $('#r-vn').textContent = vocab.length;
+  tvSetup(book); // a TV episode: the picture's place under the bar (a poster: nothing loads from YouTube before ▶)
   cvSetup(); // before the text enters the page: the whole book is never laid out at once
   bookEl.replaceChildren(...R.data.sections.map(s => s.el), isEp(book) ? h('div', { class: 'book-end' }, 'Fin de l\u2019épisode')
     : h('div', { class: 'book-end' }, 'Fin du livre · ', h('button', { class: 'btn small', onclick: () => showDetails(book.id) }, 'Noter ce livre')));
@@ -2309,14 +2358,14 @@ function closeReader(silent, opening) {
   pyObs && pyObs.disconnect(); pyObs = null; $('#book').classList.remove('py-on');
   LP.stop(); $('#book').classList.remove('lines', 'l-nopy', 'l-en-tap', 'l-en-off');
   if (R.book) savePos(true);
-  endPeek(); R.pending = null; ttsStop(true); paStop();
+  endPeek(); R.pending = null; ttsStop(true); paStop(); tvSetup(null); // the YouTube player is destroyed with the bar
   hidePop();
   if (R.data) R.data.urls.forEach(u => URL.revokeObjectURL(u));
-  const wasEp = isEp(R.book), wasId = R.book && R.book.id;
+  const wasEp = isEp(R.book), wasTv = isTv(R.book), wasId = R.book && R.book.id;
   R.book = null; R.data = null; TTS.blocks = null;
   $('#book').replaceChildren(); // free the closed book's DOM
   if (wasEp && PV.deferred[wasId]) podApplyDeferred(wasId); // a newer transcript came while it was open
-  if (!silent) { if (wasEp) showPodcasts(); else { show('lib'); renderLibrary(); } }
+  if (!silent) { if (wasTv) showTv(); else if (wasEp) showPodcasts(); else { show('lib'); renderLibrary(); } }
 }
 function restorePos() {
   const p = R.book && R.book.pos; const secs = R.data.sections;
@@ -2326,7 +2375,8 @@ function restorePos() {
     : () => { const el = secs[p.s].el; const top = el.getBoundingClientRect().top + scrollY; window.scrollTo(0, top + p.r * el.offsetHeight - barH()); };
   go(); requestAnimationFrame(() => { go(); onScroll(); });
 }
-const barH = () => $('.rbar').offsetHeight + 12;
+// the reader's top bar, plus the TV picture when it sits above the text (phone width, not reduced)
+const barH = () => $('.rbar').offsetHeight + tvInset() + 12;
 function currentSection() {
   const secs = R.data.sections; const y = barH() + 4;
   let lo = 0, hi = secs.length - 1, ans = 0;
@@ -2816,7 +2866,8 @@ function showSettings() {
         p.lines && settings.pinyin ? note('La ligne de pinyin est masquée tant que le pinyin (pīn) est au-dessus des caractères.') : null,
         p.lines && p.hasEn ? h('div', { class: 'seg', role: 'group', 'aria-label': 'Anglais' }, h('span', { class: 'muted', style: 'align-self:center;padding-right:4px' }, 'English'),
           [['show', 'Affiché'], ['tap', 'Toucher pour voir'], ['off', 'Off']].map(([v, l]) => h('button', { 'data-lsw': 'en:' + v, onclick: () => setPodLines('en', v) }, l))) : null,
-        note(p.lines ? 'Lignes : une ligne par phrase, avec le pinyin et l’anglais (traduction automatique, non relue) en dessous.' : 'Texte : la transcription en paragraphes.')].filter(Boolean));
+        note(isTv(R.book) && p.meta.engine === 'subs' ? (p.lines ? 'Lignes : une ligne par sous-titre, avec le pinyin et l’anglais (s’il existe) en dessous.' : 'Texte : les sous-titres en paragraphes.')
+          : p.lines ? 'Lignes : une ligne par phrase, avec le pinyin et l’anglais (traduction automatique, non relue) en dessous.' : 'Texte : la transcription en paragraphes.')].filter(Boolean));
       linesApply(box);
     };
     draw(); return box;
@@ -3706,23 +3757,32 @@ if (ttsOK()) speechSynthesis.addEventListener && speechSynthesis.addEventListene
 // One <audio>, streamed from the podcast host: the app never fetches, caches or stores the audio (no crossorigin either:
 // the hosts send no CORS headers, and playback does not need them). In the reader the bar takes the #tts container and
 // follows the transcript: the sentence being said is found by time (binary search on the segments) and highlighted.
-const PA = { el: null, host: '', id: '', title: '', show: '', src: '', dur: 0, segs: null, els: null, cur: -1, rep: -1, want: false, repWait: 0, err: '',
+// A TV episode uses the same bar and logic with YouTube's embedded player behind it (tvMedia: same subset of the media API).
+const PA = { el: null, audio: null, tv: false, host: '', id: '', title: '', show: '', src: '', dur: 0, segs: null, els: null, cur: -1, rep: -1, want: false, repWait: 0, err: '',
   userAt: 0, selfAt: 0, raf: 0, lock: null, savedAt: 0, ui: null, seeking: false };
 const PA_RATES = [0.6, 0.75, 0.85, 1, 1.15, 1.3];
+const TV_RATES = [0.5, 0.75, 1, 1.25, 1.5]; // YouTube's player only has steps of 0.25
 // listening position per episode, in this browser only (kept out of the synced record: no Drive churn every few seconds)
 const paPos = { get(id) { const m = LS.get('podPos', {}); return m[id] == null ? null : +m[id]; },
   set(id, t) { const m = LS.get('podPos', {}); if (t == null) delete m[id]; else m[id] = Math.round(t); LS.set('podPos', m); } };
-const epKey = b => b && b.pod ? `${b.pod.show}/${b.pod.key}` : '';
+// 'show/key' of an episode, 'tv:show/key' of a TV episode (positions, removed list, rows): the two never collide
+const epKey = b => b && b.pod ? `${b.pod.tv ? 'tv:' : ''}${b.pod.show}/${b.pod.key}` : '';
+// the listeners shared by the <audio> element and the YouTube adapter (tvMedia), which speaks the same subset
+function paWire(a) {
+  // events of a media that is no longer the bar's (the audio paused while a TV episode takes over, a destroyed player) are ignored
+  const on = (type, f) => a.addEventListener(type, e => { if (a === PA.el) f(e); });
+  on('playing', () => { if (!PA.src) return; PA.want = true; PA.err = ''; paUi(); paLoop(); try { navigator.wakeLock && navigator.wakeLock.request('screen').then(l => { PA.lock = l; }).catch(() => {}); } catch {} });
+  on('pause', () => { if (!PA.repWait) { PA.want = false; paSave(true); } paUi(); try { PA.lock && PA.lock.release(); PA.lock = null; } catch {} });
+  on('timeupdate', () => paTick());
+  on('loadedmetadata', () => { if (isFinite(a.duration) && a.duration > 0) PA.dur = a.duration; paUi(); });
+  on('ended', () => { PA.want = false; paSave(true); if (PA.id) paPos.set(PA.id, null); paUi(); });
+}
 function paAudio() {
-  if (PA.el) return PA.el;
-  const a = PA.el = new Audio(); a.preload = 'none';
-  a.addEventListener('playing', () => { PA.err = ''; paUi(); paLoop(); try { navigator.wakeLock && navigator.wakeLock.request('screen').then(l => { PA.lock = l; }).catch(() => {}); } catch {} });
-  a.addEventListener('pause', () => { if (!PA.repWait) { PA.want = false; paSave(true); } paUi(); try { PA.lock && PA.lock.release(); PA.lock = null; } catch {} });
-  a.addEventListener('timeupdate', () => paTick());
-  a.addEventListener('loadedmetadata', () => { if (isFinite(a.duration) && a.duration > 0) PA.dur = a.duration; paUi(); });
-  a.addEventListener('ended', () => { PA.want = false; paSave(true); if (PA.id) paPos.set(PA.id, null); paUi(); });
+  if (PA.audio) return PA.el = PA.audio;
+  const a = PA.audio = PA.el = new Audio(); a.preload = 'none';
+  paWire(a);
   a.addEventListener('error', () => {
-    if (!PA.src) return; // the source was removed on purpose (bar closed)
+    if (!PA.src || a !== PA.el) return; // the source was removed on purpose (bar closed), or a TV episode has the bar
     PA.want = false; PA.err = navigator.onLine === false ? 'Hors connexion : l’audio ne peut pas être lu. Le texte reste lisible.' : 'Audio indisponible : l’hébergeur du podcast ne répond pas. Le texte reste lisible.';
     paDraw();
   });
@@ -3755,16 +3815,25 @@ function paHost() { return PA.host === 'reader' ? $('#tts') : PA.host === 'pod' 
 // bar for the episode open in the reader; at = start time (else the saved position, else the first sentence on screen)
 function paOpenBook(at) {
   const b = R.book, d = R.data; if (!isEp(b) || !d || !d.pod) return false;
-  const src = httpURL((b.pod && b.pod.audio) || d.pod.meta.audio);
-  if (!src) { toast('Pas d’adresse audio pour cet épisode.'); return false; }
+  const tv = isTv(b), video = tv && YT_ID.test(b.pod.video || '') ? b.pod.video : '';
+  const src = tv ? (video ? 'https://www.youtube.com/watch?v=' + video : '') : httpURL((b.pod && b.pod.audio) || d.pod.meta.audio);
+  if (!src) { toast(tv ? 'Pas de vidéo YouTube pour cet épisode.' : 'Pas d’adresse audio pour cet épisode.'); return false; }
   paStop();
-  Object.assign(PA, { host: 'reader', id: epKey(b), title: b.title, show: b.author || '', src, dur: +(b.pod && b.pod.dur) || d.pod.meta.dur || 0, segs: d.pod.segs, els: d.pod.els, cur: -1, rep: -1, err: '' });
+  Object.assign(PA, { tv, host: 'reader', id: epKey(b), title: b.title, show: b.author || '', src, dur: +(b.pod && b.pod.dur) || d.pod.meta.dur || 0, segs: d.pod.segs, els: d.pod.els, cur: -1, rep: -1, err: '' });
   const saved = paPos.get(PA.id);
   const t = at != null ? at : saved != null ? saved : (d.pod.segs[paVisibleIndex()] || { s: 0 }).s;
-  const a = paAudio(); a.src = src; a.playbackRate = settings.podRate || 1; paPitch(a);
-  try { a.currentTime = t; } catch {} // before the metadata: becomes the start position
+  let a;
+  if (tv) { // the picture's own clock: the subtitles' times
+    a = PA.el = tvMedia(video, t); paWire(a); a.playbackRate = settings.tvRate || 1;
+    a.addEventListener('error', () => { if (a !== PA.el) return; PA.want = false; PA.err = a.tvMsg; PA.errLink = a.link(); paDraw(); });
+  }
+  else {
+    a = paAudio(); a.src = src; a.playbackRate = settings.podRate || 1; paPitch(a);
+    try { a.currentTime = t; } catch {} // before the metadata: becomes the start position
+  }
   $('#tts').hidden = false; $('#tts-in').classList.add('pa'); $('#r-tts').setAttribute('aria-pressed', 'true');
-  paMedia(); paDraw(); paMark(paIndexAt(t), true); paPlay();
+  if (!tv) paMedia(); // YouTube's player has its own media controls
+  paDraw(); paMark(paIndexAt(t), true); paPlay();
   return true;
 }
 // plain playback of a feed episode from the Podcasts tab (no transcript needed)
@@ -3791,7 +3860,7 @@ function paPlay() {
   PA.want = true; PA.err = ''; paUi();
   a.play().catch(e => {
     if (e && e.name === 'AbortError') return; // a new source or seek replaced this request
-    PA.want = false; PA.err = e && e.name === 'NotAllowedError' ? 'Le navigateur a bloqué la lecture : touche ▶.' : (navigator.onLine === false ? 'Hors connexion : l’audio ne peut pas être lu. Le texte reste lisible.' : 'Audio indisponible : l’hébergeur du podcast ne répond pas. Le texte reste lisible.');
+    PA.want = false; PA.errLink = PA.el && PA.el.isYT ? PA.el.link() : ''; PA.err = e && e.tvMsg ? e.tvMsg : e && e.name === 'NotAllowedError' ? 'Le navigateur a bloqué la lecture : touche ▶.' : (navigator.onLine === false ? 'Hors connexion : l’audio ne peut pas être lu. Le texte reste lisible.' : 'Audio indisponible : l’hébergeur du podcast ne répond pas. Le texte reste lisible.');
     paDraw();
   });
 }
@@ -3872,12 +3941,13 @@ function paStop() {
   if (!PA.host) return;
   const host = paHost();
   paSave(true); PA.want = false; clearTimeout(PA.repWait); PA.repWait = 0; cancelAnimationFrame(PA.raf);
-  if (PA.el) { PA.src = ''; PA.el.pause(); PA.el.removeAttribute('src'); try { PA.el.load(); } catch {} } // stops the download too
+  if (PA.el && PA.el.isYT) { PA.src = ''; PA.el.destroy(); PA.el = null; } // the YouTube player is destroyed, its poster comes back
+  else if (PA.el) { PA.src = ''; PA.el.pause(); PA.el.removeAttribute('src'); try { PA.el.load(); } catch {} } // stops the download too
   try { PA.lock && PA.lock.release(); PA.lock = null; } catch {}
   if (PA.host === 'reader') { try { CSS.highlights && CSS.highlights.delete('tts'); } catch {} $$('.pseg.now, .lrow.now').forEach(x => x.classList.remove('now')); $('#tts-in').classList.remove('pa'); $('#tts-in').replaceChildren(); $('#r-tts').setAttribute('aria-pressed', 'false'); }
   if (host) host.hidden = true;
   const ms = navigator.mediaSession; if (ms) { try { ms.metadata = null; } catch {} for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack']) try { ms.setActionHandler(a, null); } catch {} }
-  Object.assign(PA, { host: '', id: '', segs: null, els: null, cur: -1, rep: -1, err: '', ui: null });
+  Object.assign(PA, { tv: false, host: '', id: '', segs: null, els: null, cur: -1, rep: -1, err: '', ui: null });
   podMarkPlaying();
 }
 function paDraw() {
@@ -3889,8 +3959,9 @@ function paDraw() {
   const seek = h('input', { type: 'range', class: 'pa-seek', min: 0, max: Math.max(1, Math.round(PA.dur)), step: 1, value: Math.round(paTime()), 'aria-label': 'Position dans l’épisode',
     oninput: e => { PA.seeking = true; time.textContent = `${mmss(+e.target.value)} / ${mmss(PA.dur)}`; },
     onchange: e => { PA.seeking = false; PA.userAt = 0; paSeek(+e.target.value, PA.want); } });
-  const rate = h('select', { 'aria-label': 'Vitesse', title: 'Vitesse', onchange: e => { settings.podRate = +e.target.value; LS.set('settings', settings); if (PA.el) { PA.el.playbackRate = settings.podRate; paPitch(PA.el); } } },
-    PA_RATES.map(r => h('option', { value: r, selected: (settings.podRate || 1) === r }, '× ' + String(r).replace('.', ','))));
+  const rk = PA.tv ? 'tvRate' : 'podRate';
+  const rate = h('select', { 'aria-label': 'Vitesse', title: 'Vitesse', onchange: e => { settings[rk] = +e.target.value; LS.set('settings', settings); if (PA.el) { PA.el.playbackRate = settings[rk]; paPitch(PA.el); } } },
+    (PA.tv ? TV_RATES : PA_RATES).map(r => h('option', { value: r, selected: (settings[rk] || 1) === r }, '× ' + String(r).replace('.', ','))));
   box.classList.add('pa');
   box.replaceChildren(...[ // replaceChildren would write a bare null as text
     book ? null : h('div', { class: 'pa-ttl' }, PA.title),
@@ -3901,11 +3972,11 @@ function paDraw() {
       rate,
       seg ? b('Répéter la phrase', '🔁', paToggleRepeat, { 'aria-pressed': String(PA.rep >= 0) }) : null,
       seg && book ? b('Lire à partir de l’écran', 'Ici', () => { PA.userAt = 0; const i = paVisibleIndex(); if (PA.rep >= 0) PA.rep = i; paSeek(PA.segs[i].s, true); }) : null,
-      h('button', { class: 'icon-btn', 'aria-label': 'Fermer le lecteur audio', title: 'Fermer', onclick: () => paStop() }, '✕')),
+      h('button', { class: 'icon-btn', 'aria-label': PA.tv ? 'Fermer la vidéo' : 'Fermer le lecteur audio', title: 'Fermer', onclick: () => paStop() }, '✕')),
     h('div', { class: 'pa-row' }, time, seek,
       book && R.data && R.data.pod && R.data.pod.lines ? [b('Ligne de pinyin', 'Py', () => setPodLines('py', !settings.podPy), { class: 'btn small pa-b pa-t', 'data-lsw': 'py' }),
         R.data.pod.hasEn ? b('Anglais', 'EN', () => setPodLines('en', settings.podEn === 'off' ? settings.podEnLast || 'show' : 'off'), { class: 'btn small pa-b pa-t', 'data-lsw': 'en' }) : null] : null),
-    PA.err ? h('div', { class: 'msg', role: 'status' }, PA.err) : null].filter(Boolean));
+    PA.err ? h('div', { class: 'msg', role: 'status' }, PA.err, PA.tv && PA.errLink ? [' ', h('a', { href: PA.errLink, target: '_blank', rel: 'noopener' }, 'Ouvrir sur YouTube')] : null) : null].filter(Boolean));
   PA.ui = { play, time, seek };
   paUi(); if (book) linesApply();
 }
@@ -3915,6 +3986,164 @@ function paUi() {
   u.play.textContent = PA.want ? '❚❚' : '▶'; u.play.setAttribute('aria-label', PA.want ? 'Pause' : 'Lire'); u.play.title = PA.want ? 'Pause' : 'Lire';
   if (!PA.seeking) { u.time.textContent = `${mmss(t)} / ${mmss(PA.dur)}`; u.seek.max = Math.max(1, Math.round(PA.dur)); u.seek.value = Math.round(t); }
   try { navigator.mediaSession && (navigator.mediaSession.playbackState = PA.want ? 'playing' : 'paused'); } catch {}
+}
+
+/* ================= TV: YouTube's embedded player behind the 听 bar ================= */
+// A TV episode is a drama from the channel's own YouTube upload; its text is the channel's subtitle track, whose cue times
+// are the video's own clock (ads need no handling). The picture sits under the reader's bar (beside the text on wide
+// screens); nothing loads from YouTube before the reader taps ▶ (a poster until then), and leaving the reader destroys
+// the player. tvMedia() speaks the subset of HTMLMediaElement that the bar's logic (PA, pa*) uses, so line following,
+// previous/next, repeat, speed, « Ici », chips and « ▶ d'ici » work unchanged.
+let ytApiP = null;
+function ytApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (ytApiP) return ytApiP;
+  return ytApiP = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    const fail = e => { clearTimeout(to); ytApiP = null; sc.remove(); rej(e); };
+    const to = setTimeout(() => fail(new Error('timeout')), 15000); // the loader came but not the player code (blocked half-way)
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { clearTimeout(to); try { prev && prev(); } catch {} window.YT && window.YT.Player ? res(window.YT) : fail(new Error('no player')); };
+    sc.src = 'https://www.youtube.com/iframe_api'; sc.async = true;
+    sc.onerror = () => fail(new Error('blocked'));
+    document.head.append(sc);
+  });
+}
+const tvWatch = (video, t) => video ? `https://www.youtube.com/watch?v=${video}${t > 5 ? `&t=${Math.floor(t)}s` : ''}` : '';
+function tvErrMsg(code) {
+  if (code === 'offline') return 'Hors connexion : la vidéo ne peut pas être lue. Le texte reste lisible.';
+  if (code === 'api') return 'Le lecteur YouTube ne se charge pas (pas de connexion, ou YouTube bloqué par le réseau ou un bloqueur). Le texte reste lisible.';
+  if (code === 100) return 'Cette vidéo n’est plus disponible : retirée ou rendue privée par la chaîne. Le texte reste lisible.';
+  if (code === 101 || code === 150) return 'YouTube ne permet pas de lire cette vidéo ici : la chaîne interdit sa lecture hors de YouTube, ou elle n’est pas disponible dans ton pays (ces séries sont limitées à certaines régions). Le texte reste lisible.';
+  if (code === 2) return 'YouTube refuse l’adresse de cette vidéo (erreur 2). Le texte reste lisible.';
+  if (code === 5) return 'Le lecteur YouTube n’a pas pu lire cette vidéo (erreur 5). Réessaie, ou ouvre-la sur YouTube. Le texte reste lisible.';
+  return `YouTube ne peut pas lire cette vidéo (erreur ${code}). Le texte reste lisible.`;
+}
+const abortErr = () => Object.assign(new Error('replaced'), { name: 'AbortError' }); // paPlay ignores these: the 'error' event says why
+function tvMedia(video, t0) {
+  const L = {}, now = () => performance.now();
+  // state: YouTube's (-1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued); raw = last time YouTube reported,
+  // at = when it changed (the time in between is interpolated while playing); seekT = a seek YouTube has not reported yet
+  const st = { p: null, ready: false, state: -1, t: Math.max(0, +t0 || 0), rate: 1, dur: 0, raw: 0, at: 0, seekT: null, seekAt: 0, timer: 0, nudge: 0, dead: false, creating: false, pend: null };
+  const emit = type => (L[type] || []).slice().forEach(f => { try { f({ type, target: m }); } catch (e) { console.error(e); } });
+  const settle = (ok, err) => { const p = st.pend; st.pend = null; clearTimeout(st.nudge); if (p) ok ? p.res() : p.rej(err || abortErr()); };
+  const poll = () => {
+    if (!st.p || !st.ready || st.dead) return;
+    let r = 0, d = 0; try { r = +st.p.getCurrentTime() || 0; d = +st.p.getDuration() || 0; } catch {}
+    if (r !== st.raw) { st.raw = r; st.at = now(); }
+    if (st.seekT != null && (Math.abs(r - st.seekT) < 1 || now() - st.seekAt > 3000)) st.seekT = null;
+    if (d > 0 && Math.abs(d - st.dur) > 0.5) { st.dur = d; emit('loadedmetadata'); }
+    emit('timeupdate');
+  };
+  const ticking = on => { clearInterval(st.timer); st.timer = on ? setInterval(poll, 250) : 0; }; // about 4 times a second: YouTube sends no timeupdate
+  const drop = () => { ticking(false); const p = st.p; st.p = null; st.ready = false; st.state = -1; if (p) try { p.destroy(); } catch {} };
+  const fail = code => { // the text stays readable; the picture's place says why, with a link to YouTube
+    m.tvMsg = tvErrMsg(code); m.failed = code; st.t = m.currentTime; drop(); tvPoster(m.tvMsg, true);
+    emit('error'); settle(false);
+  };
+  // YouTube will not always start without a tap inside its own frame (autoplay rules): then the reader is told so
+  const arm = () => { clearTimeout(st.nudge); st.nudge = setTimeout(() => { if (st.pend && st.state !== 1 && st.state !== 3) settle(false, Object.assign(new Error('tap'), { tvMsg: 'Touche ▶ dans la vidéo pour lancer la lecture.' })); }, 5000); };
+  const create = () => {
+    if (st.creating || st.p || st.dead) return;
+    if (navigator.onLine === false) { fail('offline'); return; }
+    st.creating = true; tvPoster('Chargement du lecteur YouTube…');
+    ytApi().then(YT => {
+      st.creating = false; if (st.dead) return;
+      const slot = $('#tvbox .tv-frame'); if (!slot) { fail('api'); return; }
+      st.p = new YT.Player(slot, { host: 'https://www.youtube-nocookie.com', videoId: video, width: '100%', height: '100%',
+        playerVars: { playsinline: 1, rel: 0, start: Math.floor(st.t) },
+        events: {
+          onReady: () => {
+            if (st.dead) return;
+            st.ready = true; m.failed = null; $$('#tvbox .tv-poster').forEach(x => x.remove());
+            try { st.p.setPlaybackRate(st.rate); if (st.t > 0) st.p.seekTo(st.t, true); } catch {}
+            st.raw = st.t; st.at = now();
+            if (st.pend) { try { st.p.playVideo(); } catch {} arm(); }
+          },
+          onStateChange: e => {
+            if (st.dead) return;
+            st.state = e.data; poll();
+            if (e.data === 1) { st.at = now(); ticking(true); settle(true); emit('playing'); }
+            else if (e.data === 3) ticking(true);
+            else if (e.data === 2) { ticking(false); emit('pause'); }
+            else if (e.data === 0) { ticking(false); emit('pause'); emit('ended'); }
+          },
+          onError: e => { if (!st.dead) fail(+e.data); }
+        } });
+    }, () => { st.creating = false; if (!st.dead) fail(navigator.onLine === false ? 'offline' : 'api'); });
+  };
+  const m = {
+    isYT: true, video, tvMsg: '', failed: null,
+    get currentTime() {
+      if (!st.ready) return st.t;
+      if (st.seekT != null) return st.seekT;
+      return st.state === 1 ? st.raw + Math.min(1, (now() - st.at) / 1000) * st.rate : st.raw;
+    },
+    set currentTime(t) {
+      t = Math.max(0, +t || 0); st.t = t;
+      if (!st.ready) return; // becomes the start position
+      try { st.p.seekTo(t, true); } catch {}
+      st.seekT = t; st.seekAt = now(); st.raw = t; st.at = now();
+    },
+    get paused() { return !(st.state === 1 || st.state === 3 || st.pend); },
+    get duration() { return st.dur || NaN; },
+    get playbackRate() { return st.rate; },
+    set playbackRate(r) { st.rate = +r || 1; if (st.ready) try { st.p.setPlaybackRate(st.rate); } catch {} },
+    play() {
+      if (st.dead) return Promise.reject(abortErr());
+      return new Promise((res, rej) => {
+        if (st.pend) settle(false);
+        st.pend = { res, rej };
+        if (st.ready) { try { st.p.playVideo(); } catch {} arm(); } else create();
+      });
+    },
+    pause() { settle(false); if (st.ready) try { st.p.pauseVideo(); } catch {} },
+    addEventListener(type, f) { (L[type] = L[type] || []).push(f); },
+    removeEventListener(type, f) { L[type] = (L[type] || []).filter(x => x !== f); },
+    link() { return tvWatch(video, m.currentTime); },
+    destroy() { // the bar is closed or the reader left: nothing of YouTube stays in the page
+      if (st.dead) return; st.dead = true; settle(false); drop();
+      if (m.failed != null) tvPoster(m.tvMsg, true); else tvPoster();
+    }
+  };
+  return m;
+}
+// the picture's place in the reader (a TV episode open) or nothing
+const TVB = { book: null };
+function tvSetup(b) {
+  const box = $('#tvbox'), rd = $('#reader');
+  if (!b || !isTv(b)) { TVB.book = null; box.hidden = true; box.replaceChildren(); rd.classList.remove('tv', 'tv-mini'); $('#r-tts').title = 'Lecture audio'; return; }
+  TVB.book = b; rd.classList.add('tv'); rd.classList.toggle('tv-mini', !!settings.tvMini); box.hidden = false;
+  $('#r-tts').title = 'Vidéo (YouTube), synchronisée avec le texte';
+  tvPoster();
+}
+// height the picture takes above the text (phone width, full size); 0 beside the text, reduced, or no TV episode
+function tvInset() {
+  const box = $('#tvbox'), rd = $('#reader');
+  return box && !box.hidden && rd.classList.contains('tv') && !rd.classList.contains('tv-mini') && !matchMedia('(min-width: 1100px)').matches ? box.offsetHeight : 0;
+}
+// poster (▶), a loading line, or a failure message with a link to YouTube; the player's slot stays first in the box
+function tvPoster(msg, bad) {
+  const b = TVB.book, box = $('#tvbox'); if (!b || !box) return;
+  const mini = !!settings.tvMini, video = b.pod.video || '';
+  const link = tvWatch(video, PA.tv && PA.el ? PA.el.currentTime : paPos.get(epKey(b)) || 0);
+  const go = h('button', { class: 'tv-go', type: 'button', 'aria-label': bad ? 'Réessayer' : 'Lire la vidéo', title: bad ? 'Réessayer' : 'Lire', onclick: () => tvGo() }, '▶');
+  const poster = msg && !bad ? h('div', { class: 'tv-poster', role: 'status' }, h('div', { class: 'tv-ttl' }, msg))
+    : bad ? h('div', { class: 'tv-poster bad', role: 'alert' }, h('div', { class: 'tv-ttl' }, msg), link ? h('a', { href: link, target: '_blank', rel: 'noopener' }, 'Ouvrir sur YouTube') : null, video ? go : null)
+    : h('div', { class: 'tv-poster' }, video ? go : null, h('div', { class: 'tv-ttl' }, [b.author, b.title].filter(Boolean).join(' · ')),
+      h('div', null, video ? 'La vidéo se charge depuis YouTube quand tu touches ▶.' : 'Pas de vidéo YouTube pour cet épisode.'));
+  const slot = $('.tv-frame', box) || box.querySelector('iframe') || h('div', { class: 'tv-frame' });
+  box.replaceChildren(slot, poster, h('button', { class: 'tv-size', type: 'button', 'aria-label': mini ? 'Agrandir la vidéo' : 'Réduire la vidéo', title: mini ? 'Agrandir la vidéo' : 'Réduire la vidéo', onclick: tvToggleMini }, mini ? '⤢' : '⤡'));
+}
+function tvGo() {
+  if (PA.host === 'reader' && PA.tv && PA.el) { if (!PA.want) paPlay(); return; }
+  paOpenBook();
+}
+function tvToggleMini() {
+  settings.tvMini = !settings.tvMini; LS.set('settings', settings);
+  keepPlace(() => $('#reader').classList.toggle('tv-mini', settings.tvMini));
+  const x = $('#tvbox .tv-size'); if (x) { const l = settings.tvMini ? 'Agrandir la vidéo' : 'Réduire la vidéo'; x.textContent = settings.tvMini ? '⤢' : '⤡'; x.setAttribute('aria-label', l); x.title = l; }
+  onScroll();
 }
 
 /* ================= podcast « Lignes »: pinyin and English lines, their switches ================= */
@@ -4011,7 +4240,7 @@ function setPodLines(key, v) {
 let relaying = null;
 async function podRelayout(layout) {
   const b = R.book, d = R.data; if (!isEp(b) || !d || !d.pod || relaying) return;
-  settings.podLayout = layout; LS.set('settings', settings);
+  settings[isTv(b) ? 'tvLayout' : 'podLayout'] = layout; LS.set('settings', settings);
   if ((d.pod.lines ? 'lines' : 'text') === layout) { linesApply(); return; }
   relaying = (async () => {
     const i = paVisibleIndex(), r0 = d.pod.els[i] ? d.pod.els[i].getBoundingClientRect().top : 0;
@@ -4169,12 +4398,14 @@ async function renderVocab() {
     back));
   // one vocabulary and one review deck, but the sources are told apart: books, then podcast episodes
   const srcOpt = b => h('option', { value: b.id, selected: b.id === V.bookId }, b.title);
-  const withWords = books.filter(b => all.some(v => v.bookId === b.id)), srcB = withWords.filter(b => !isEp(b)), srcP = withWords.filter(isEp);
+  const withWords = books.filter(b => all.some(v => v.bookId === b.id)), srcB = withWords.filter(b => !isEp(b)), srcP = withWords.filter(isPod), srcT = withWords.filter(isTv);
+  const anyEp = srcP.length + srcT.length > 0;
   const bookSel = h('select', { id: 'v-book', 'aria-label': 'Source', onchange: e => { V.bookId = e.target.value; V.chapter = ''; renderVocab(); } },
-    h('option', { value: '' }, srcP.length ? 'Tous les livres et épisodes' : 'Tous les livres'),
-    srcP.length ? [srcB.length ? h('optgroup', { label: 'Livres' }, srcB.map(srcOpt)) : null, h('optgroup', { label: 'Podcasts' }, srcP.map(srcOpt))] : srcB.map(srcOpt));
+    h('option', { value: '' }, anyEp ? 'Tous les livres et épisodes' : 'Tous les livres'),
+    anyEp ? [srcB.length ? h('optgroup', { label: 'Livres' }, srcB.map(srcOpt)) : null, srcP.length ? h('optgroup', { label: 'Podcasts' }, srcP.map(srcOpt)) : null,
+      srcT.length ? h('optgroup', { label: 'TV' }, srcT.map(b => h('option', { value: b.id, selected: b.id === V.bookId }, b.author ? `${b.author} · ${b.title}` : b.title))) : null] : srcB.map(srcOpt));
   const chapSel = h('select', { id: 'v-chap', disabled: !V.bookId, onchange: e => { V.chapter = e.target.value; renderVocab(); } },
-    h('option', { value: '' }, V.bookId ? 'Tous les chapitres' : (srcP.length ? 'Choisis un livre ou un épisode d\'abord' : 'Choisis un livre d\'abord')), chapters.map(c => h('option', { value: c, selected: c === V.chapter }, c)));
+    h('option', { value: '' }, V.bookId ? 'Tous les chapitres' : (anyEp ? 'Choisis un livre ou un épisode d\'abord' : 'Choisis un livre d\'abord')), chapters.map(c => h('option', { value: c, selected: c === V.chapter }, c)));
   const search = h('input', { type: 'search', id: 'v-q', placeholder: 'Chercher (caractères, pinyin, sens)', value: V.q, oninput: e => { if (!e.isComposing) vocabSearch(e.target.value); }, oncompositionend: e => vocabSearch(e.target.value) });
   root.append(h('div', { class: 'vfilters' }, bookSel, chapSel, search));
   root.append(h('div', { class: 'vhead' },
@@ -4200,7 +4431,7 @@ async function renderVocab() {
   for (const v of list) { if (!byBook.has(v.bookId)) byBook.set(v.bookId, new Map()); const m = byBook.get(v.bookId); if (!m.has(v.chapter)) m.set(v.chapter, []); m.get(v.chapter).push(v); }
   for (const [bid, chs] of byBook) {
     const b = bmap.get(bid); const n = [...chs.values()].reduce((a, x) => a + x.length, 0);
-    const g = h('section', { class: 'vgroup' }, h('h2', null, isEp(b) ? h('span', { class: 'pill', title: 'Épisode de podcast' + (b.author ? ' · ' + b.author : '') }, '播客') : null, b.title, h('span', { class: 'n' }, `${n} mot${n > 1 ? 's' : ''}`)));
+    const g = h('section', { class: 'vgroup' }, h('h2', null, isTv(b) ? h('span', { class: 'pill', title: 'Épisode de série (TV)' + (b.author ? ' · ' + b.author : '') }, '剧') : isEp(b) ? h('span', { class: 'pill', title: 'Épisode de podcast' + (b.author ? ' · ' + b.author : '') }, '播客') : null, isTv(b) && b.author ? `${b.author} · ${b.title}` : b.title, h('span', { class: 'n' }, `${n} mot${n > 1 ? 's' : ''}`)));
     for (const [ch, items] of chs) {
       g.append(h('h3', null, ch));
       for (const v of items) {
@@ -4490,6 +4721,7 @@ const Sync = {
       this.setStatus((failed ? `Synchronisé, sauf ${failed} fichier${failed > 1 ? 's' : ''} · ` : 'Synchronisé ') + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
       if (changed && !$('#lib').hidden) renderLibrary();
       if (changed && !$('#pod').hidden) renderPod();
+      if (changed && !$('#tv').hidden) renderTv();
       if (changed && !$('#voc').hidden) renderVocab();
       if (R.book) { R.saved = new Set((await DB.byBook(R.book.id)).map(v => v.simp)); updateVocabCount(); }
     } catch (e) { console.error(e); this.setStatus('Erreur de synchro'); if (interactive) toast('Synchronisation impossible : ' + e.message); }
@@ -4548,6 +4780,7 @@ const Pod = {
   refreshTab(hasEp) {
     if (hasEp != null) LS.set('podHasEp', !!hasEp);
     $('#nav-pod').hidden = !(this.on() || LS.get('podHasEp', false));
+    $('#nav-tv').hidden = !(this.on() || LS.get('tvHasEp', false)); // TV: same rule (token checked, or a TV episode stored)
   },
   fail(r, what) {
     const s = r.status, e = new Error();
@@ -4595,6 +4828,10 @@ const podRemoved = () => new Set(LS.get('podRemoved', []));
 function podSetRemoved(id, on) { const s = podRemoved(); if (on) s.add(id); else s.delete(id); LS.set('podRemoved', [...s]); }
 // one record per episode on every device: the same id everywhere, so two devices that fetched it merge instead of doubling
 const podId = (show, key) => `pod.${show}.${key}`;
+const tvId = (show, key) => `tv.${show}.${key}`;
+// the repo's folder and the row id of an episode kind: 'pod' (podcast/<show>/) or 'tv' (tv/<show>/)
+const epDir = kind => kind === 'tv' ? 'tv' : 'podcast';
+const epKeyOf = (kind, show, key) => `${kind === 'tv' ? 'tv:' : ''}${show}/${key}`;
 const podShowTitle = id => ((PV.shows || []).find(x => x.id === id) || {}).title || '';
 async function podLoadCache() {
   if (!PV.shows) { const cs = await DB.get('kv', 'pod:shows').catch(() => null); if (cs && !PV.shows) PV.shows = cs.v; }
@@ -4614,7 +4851,7 @@ function podAuto(force) {
   if (PV.auto) return PV.auto;
   if (!force && Date.now() - LS.get('podAutoAt', 0) < POD_EVERY) return Promise.resolve();
   LS.set('podAutoAt', Date.now());
-  PV.auto = (async () => { try { await podAutoNow(); } catch (e) { console.warn('podcasts', e); } finally { PV.auto = null; } })();
+  PV.auto = (async () => { try { await podAutoNow(); } catch (e) { console.warn('podcasts', e); } try { await tvAutoNow(); } catch (e) { console.warn('tv', e); } finally { PV.auto = null; } })();
   return PV.auto;
 }
 async function podAutoNow() {
@@ -4632,20 +4869,8 @@ async function podAutoNow() {
       catch (e) { if (e.status === 404) continue; throw e; } // a show just added, its list not made yet
       PV.feeds[x.id] = feed; DB.put('kv', { k: 'pod:feed:' + x.id, v: feed }).catch(() => {});
       // stored transcripts of this show compared with the repo's: one folder listing for all of them
-      const mine = all.filter(b => isEp(b) && b.pod.show === x.id && local.has(b.id));
-      if (!mine.length) continue;
-      const files = await Pod.list(`podcast/${x.id}`);
-      for (const b of mine) {
-        const remote = files.get(b.pod.key + '.json'); if (!remote) continue;
-        const have = await podShaOf(b.id); if (!have || have === remote) continue;
-        if (PV.deferred[b.id] && PV.deferred[b.id].sha === remote) continue;
-        try {
-          const file = await podFetchFile(x.id, b.pod.key);
-          // never under the reader's feet: the open episode gets it when it is closed
-          if (R.book && R.book.id === b.id) { PV.deferred[b.id] = { file, sha: remote }; continue; }
-          const r = await podPutFile(b.id, file); if (r) { replaced.push(b.id); if (r.enAdded) enAdded++; }
-        } catch (e) { console.warn('podcast update', b.id, e); if (e.offline) throw e; }
-      }
+      const mine = all.filter(b => isPod(b) && b.pod.show === x.id && local.has(b.id));
+      enAdded += await epRefreshStored('pod', x.id, mine, replaced);
     }
     PV.msg = ''; PV.bad = false; Pod.on() || Pod.check();
   } catch (e) { console.warn('podcasts', e); PV.msg = e.message + (Object.keys(PV.feeds).length ? ' Liste affichée : la dernière enregistrée.' : ''); PV.bad = true; }
@@ -4656,12 +4881,31 @@ async function podAutoNow() {
   if (!$('#pod').hidden && Object.keys(podPending()).length) podPoll(true); else podPollLater();
 }
 // git hash of a stored transcript (computed once, kept with the file)
+// stored transcripts of one show compared with the repo's (one folder listing): changed ones replaced, keeping words and
+// positions; the open episode gets its new file when closed. Returns how many gained English
+async function epRefreshStored(kind, show, mine, replaced) {
+  if (!mine.length) return 0;
+  let enAdded = 0;
+  const files = await Pod.list(`${epDir(kind)}/${show}`);
+  for (const b of mine) {
+    const remote = files.get(b.pod.key + '.json'); if (!remote) continue;
+    const have = await podShaOf(b.id); if (!have || have === remote) continue;
+    if (PV.deferred[b.id] && PV.deferred[b.id].sha === remote) continue;
+    try {
+      const file = await podFetchFile(show, b.pod.key, kind);
+      // never under the reader's feet: the open episode gets it when it is closed
+      if (R.book && R.book.id === b.id) { PV.deferred[b.id] = { file, sha: remote }; continue; }
+      const r = await podPutFile(b.id, file); if (r) { replaced.push(b.id); if (r.enAdded) enAdded++; }
+    } catch (e) { console.warn('episode update', b.id, e); if (e.offline) throw e; }
+  }
+  return enAdded;
+}
 async function podShaOf(id) {
   const f = await DB.get('files', id); if (!f) return '';
   if (!f.sha) { f.sha = await gitSha(f.blob); if (f.sha) DB.put('files', f).catch(() => {}); }
   return f.sha;
 }
-async function podFetchFile(show, key) { const b = await Pod.blob(`podcast/${show}/${key}.json`); return new File([b], key + '.json', { type: 'application/json' }); }
+async function podFetchFile(show, key, kind) { const b = await Pod.blob(`${epDir(kind)}/${show}/${key}.json`); return new File([b], key + '.json', { type: 'application/json' }); }
 // a transcript into an existing record: the id, position, vocabulary, notes and listening position stay
 async function podPutFile(id, file) {
   const meta = await importPodcastJson(file);
@@ -4669,7 +4913,7 @@ async function podPutFile(id, file) {
   const was = fresh.pod && fresh.pod.en ? fresh.pod.en.done : 0;
   await DB.put('files', { id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
   await DB.del('kv', 'text:' + id);
-  fresh.pod = Object.assign(meta.pod, { show: fresh.pod.show, key: fresh.pod.key }); fresh.size = file.size; delete fresh.stats;
+  fresh.pod = Object.assign(meta.pod, { show: fresh.pod.show, key: fresh.pod.key }, fresh.pod.tv ? { tv: true } : {}); fresh.size = file.size; delete fresh.stats;
   await DB.put('books', fresh); StatsQ.add(id);
   return { enAdded: !!(meta.pod.en && meta.pod.en.done > was) };
 }
@@ -4685,19 +4929,20 @@ async function podApplyDeferred(id) {
   try { const r = await podPutFile(id, d.file); if (r) { if (r.enAdded) toast('Anglais ajouté : 1 épisode'); await podDropDrive([id]); } }
   catch (e) { console.warn('podcast update', id, e); }
   if (!$('#pod').hidden) renderPod();
+  if (!$('#tv').hidden) renderTv();
 }
 // the episode's record with its transcript stored, fetched from the repo when needed (one download per episode at a time)
-function podEnsure(show, key) {
-  const id = `${show}/${key}`;
+function podEnsure(show, key, kind = 'pod') {
+  const id = epKeyOf(kind, show, key);
   if (PV.inflight.has(id)) return PV.inflight.get(id);
   const p = (async () => {
     const all = await DB.all('books'); let b = all.find(x => isEp(x) && epKey(x) === id);
     if (b && await DB.get('files', b.id)) return b;
     if (b) { await podFileFor(b); return DB.get('books', b.id); }
-    const file = await podFetchFile(show, key), meta = await importPodcastJson(file);
-    Object.assign(meta.pod, { show, key }); // the repo's path names it, as in the feed
+    const file = await podFetchFile(show, key, kind), meta = await importPodcastJson(file);
+    Object.assign(meta.pod, { show, key }, kind === 'tv' ? { tv: true } : {}); // the repo's path names it, as in the feed
     // same record as a hand import; never opened: no position, lastRead 0 (openBook sets it)
-    b = Object.assign({ id: podId(show, key), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: key + '.json', sample: false }, meta);
+    b = Object.assign({ id: (kind === 'tv' ? tvId : podId)(show, key), addedAt: Date.now(), status: 'toread', rating: 0, startDate: '', endDate: '', notes: '', douban: '', goodreads: '', pos: null, progress: 0, lastRead: 0, size: file.size, fileName: key + '.json', sample: false }, meta);
     delete b.sha;
     await DB.put('files', { id: b.id, blob: new Blob([file], { type: 'application/json' }), sha: meta.sha });
     await DB.put('books', b, { touch: false }); StatsQ.add(b.id);
@@ -4711,12 +4956,12 @@ function podEnsure(show, key) {
 async function podFileFor(b) {
   if (Sync.connected()) { try { const f = await Sync.fetchBookFile(b); if (f) return f; } catch (e) { console.warn(e); } }
   if (!Pod.token()) throw Object.assign(new Error('Pour télécharger cet épisode, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.'), { status: 0 });
-  await podPutFile(b.id, await podFetchFile(b.pod.show, b.pod.key));
+  await podPutFile(b.id, await podFetchFile(b.pod.show, b.pod.key, isTv(b) ? 'tv' : 'pod'));
   return DB.get('files', b.id);
 }
 // tap on a readable row: open it, downloading the transcript first if this device does not have it
-async function podOpen(show, key) {
-  const id = `${show}/${key}`;
+async function podOpen(show, key, kind = 'pod') {
+  const id = epKeyOf(kind, show, key);
   if (PV.loading.has(id)) return;
   delete PV.rowErr[id]; podSetRemoved(id, false);
   const all = await DB.all('books'), b0 = all.find(x => isEp(x) && epKey(x) === id);
@@ -4726,17 +4971,17 @@ async function podOpen(show, key) {
   try {
     if (!b0 && !Pod.token()) throw new Error('Pour télécharger cet épisode, enregistre un jeton GitHub dans ☁ Synchro › Podcasts.');
     if (!b0 && navigator.onLine === false) throw Object.assign(new Error(), { offline: true });
-    b = await podEnsure(show, key);
+    b = await podEnsure(show, key, kind);
   } catch (e) {
     PV.rowErr[id] = e.offline ? 'Hors connexion : cet épisode n’est pas encore sur cet appareil.' : 'Téléchargement impossible : ' + e.message;
   }
   PV.loading.delete(id);
-  if (b && !$('#pod').hidden) { await openBook(b.id); return; }
+  if (b && !$(kind === 'tv' ? '#tv' : '#pod').hidden) { await openBook(b.id); return; }
   podRowState(id);
 }
 // loading / error line of one row, without redrawing the list
 function podRowState(id) {
-  for (const row of $$('#pod .pod-ep.rd')) {
+  for (const row of $$('#pod .pod-ep.rd, #tv .pod-ep.rd')) {
     if (row.dataset.id !== id) continue;
     const busy = PV.loading.has(id), btn = row.querySelector('.a .btn.primary'), err = row.querySelector('.st.bad.re');
     row.classList.toggle('busy', busy); row.setAttribute('aria-busy', String(busy));
@@ -4749,7 +4994,7 @@ async function podPrefetch() {
   if (!Pod.token() || navigator.onLine === false) return;
   const c = navigator.connection; if (c && c.saveData) return; // the owner asked the phone to spare data
   const [all, fileIds, tk] = await Promise.all([DB.all('books'), DB.keys('files'), DB.get('kv', 'tomb')]), local = new Set(fileIds);
-  const have = new Set(all.filter(b => isEp(b) && local.has(b.id)).map(epKey)), removed = podRemoved(), tomb = (tk && tk.map) || {};
+  const have = new Set(all.filter(b => isPod(b) && local.has(b.id)).map(epKey)), removed = podRemoved(), tomb = (tk && tk.map) || {};
   const cand = [];
   for (const x of PV.shows || []) ((PV.feeds[x.id] || {}).episodes || []).forEach((ep, i) => { if (ep && ep.tr && ep.key) cand.push({ show: x.id, ep, i }); });
   cand.sort((a, b) => String(b.ep.date || '').localeCompare(String(a.ep.date || '')) || a.i - b.i);
@@ -4821,9 +5066,9 @@ function podAskRemove(b, n) {
     await DB.del('files', b.id); await DB.del('kv', 'text:' + b.id); delete PV.deferred[b.id];
     await podDropDrive([b.id]);
   };
-  const done = async fn => { await fn(); podSetRemoved(id, true); m.close(); toast('Épisode retiré de l’appareil.'); renderPod(); };
+  const done = async fn => { await fn(); podSetRemoved(id, true); m.close(); toast('Épisode retiré de l’appareil.'); if (isTv(b)) renderTv(); else renderPod(); };
   const m = modal('Retirer de l’appareil ?', h('div', { class: 'pb' },
-    h('p', { style: 'margin:0' }, `La transcription de « ${b.title} » sera retirée de cet appareil${drive ? ' et de Google Drive' : ''}. L’épisode reste dans la liste : il sera de nouveau téléchargé si tu l’ouvres.`),
+    h('p', { style: 'margin:0' }, `${isTv(b) ? 'Le texte' : 'La transcription'} de « ${b.title} » sera retiré${isTv(b) ? '' : 'e'} de cet appareil${drive ? ' et de Google Drive' : ''}. ${b.pod.show === 'local' ? 'Ajouté depuis cet appareil, l’épisode ne pourra être rouvert que si tu ajoutes de nouveau le fichier.' : 'L’épisode reste dans la liste : il sera de nouveau téléchargé si tu l’ouvres.'}`),
     n ? h('p', { style: 'margin:0' }, `Que faire de ${n > 1 ? `ses ${n} mots` : 'son mot'} de vocabulaire ?`) : null,
     h('div', { class: 'confirm-row' }, ...(n
       ? [h('button', { class: 'btn small primary', onclick: () => done(keep) }, n > 1 ? 'Garder les mots' : 'Garder le mot'),
@@ -4847,7 +5092,7 @@ function podProg(b) {
 const podStarted = b => { const p = podProg(b); return (p.read > 0 || p.listen > 0) && !(b.status === 'read' || p.read >= 0.99 || p.listen >= 0.98); };
 async function renderPodNow() {
   const [all, vocab, fileIds] = await Promise.all([DB.all('books'), DB.all('vocab'), DB.keys('files')]);
-  const eps = all.filter(isEp), local = new Set(fileIds), tok = !!Pod.token(), pend = podPending();
+  const eps = all.filter(isPod), local = new Set(fileIds), tok = !!Pod.token(), pend = podPending(); // TV episodes: their own tab
   Pod.refreshTab(eps.length > 0);
   const vn = {}; vocab.forEach(v => { vn[v.bookId] = (vn[v.bookId] || 0) + 1; });
   // episodes stored before the English existed in the contract: count it once from the stored file
@@ -4945,12 +5190,264 @@ function podPanel() {
     inp, h('div', { class: 'confirm-row' }, save, rm), st);
 }
 
+/* ================= TV tab ================= */
+// Dramas published free by their producers on their own YouTube channels, read like podcast episodes. The list and the
+// subtitle texts come from the private repo (same token): tv.json [{id, title, en, by, channel?, lang, year, total}],
+// tv/<show>/feed.json (episodes with key 'ep01'…, n, title, dur, video = YouTube id, link, chapters, tr, made) and
+// tv/<show>/<key>.json, a transcript (v 1) with `video` instead of `audio`, engine 'subs', model = the track's language
+// code, speakers 0, one seg {s, e, t} per subtitle cue (optional en per seg + the top en block, as for podcasts).
+// An episode can also be added on the device from a .srt/.vtt file (show 'local'). Records: ids tv.<show>.<key>.
+const TVV = { shows: null, feeds: {}, msg: '', bad: false };
+function tvRefreshTab(hasEp) {
+  if (hasEp != null) LS.set('tvHasEp', !!hasEp);
+  $('#nav-tv').hidden = !(Pod.on() || LS.get('tvHasEp', false));
+}
+async function tvLoadCache() {
+  if (!TVV.shows) { const cs = await DB.get('kv', 'tv:shows').catch(() => null); if (cs && !TVV.shows) TVV.shows = cs.v; }
+  for (const x of TVV.shows || []) if (!TVV.feeds[x.id]) { const cf = await DB.get('kv', 'tv:feed:' + x.id).catch(() => null); if (cf && !TVV.feeds[x.id]) TVV.feeds[x.id] = cf.v; }
+}
+async function showTv() {
+  if (R.book) closeReader(true);
+  show('tv'); window.scrollTo(0, 0);
+  await tvLoadCache();
+  await renderTv();
+  if (Pod.token()) podAuto(); // lists and stored texts of both tabs, at most every 10 minutes
+}
+// part of the background refresh (podAuto): tv.json, the feeds, the stored subtitle texts that changed, pre-fetch
+async function tvAutoNow() {
+  await tvLoadCache();
+  if (!Object.keys(TVV.feeds).length) { TVV.msg = 'Mise à jour de la liste…'; TVV.bad = false; tvMsg(); }
+  let enAdded = 0; const replaced = [];
+  try {
+    let shows;
+    try { shows = await Pod.get('tv.json'); } catch (e) { if (e.status === 404) shows = []; else throw e; } // no TV in the repo (yet)
+    if (!Array.isArray(shows)) throw new Error('tv.json : liste attendue');
+    TVV.shows = shows.filter(x => x && x.id); DB.put('kv', { k: 'tv:shows', v: TVV.shows }).catch(() => {});
+    const [all, fileIds] = await Promise.all([DB.all('books'), DB.keys('files')]), local = new Set(fileIds);
+    for (const x of TVV.shows) {
+      let feed;
+      try { feed = await Pod.get(`tv/${x.id}/feed.json`); }
+      catch (e) { if (e.status === 404) continue; throw e; }
+      TVV.feeds[x.id] = feed; DB.put('kv', { k: 'tv:feed:' + x.id, v: feed }).catch(() => {});
+      enAdded += await epRefreshStored('tv', x.id, all.filter(b => isTv(b) && b.pod.show === x.id && local.has(b.id)), replaced);
+    }
+    TVV.msg = ''; TVV.bad = false;
+  } catch (e) { console.warn('tv', e); TVV.msg = e.message + (Object.keys(TVV.feeds).length ? ' Liste affichée : la dernière enregistrée.' : ''); TVV.bad = true; }
+  if (enAdded) toast(`Anglais ajouté : ${enAdded} épisode${enAdded > 1 ? 's' : ''}`);
+  podDropDrive(replaced);
+  if (!$('#tv').hidden) await renderTv();
+  if (!TVV.bad) { await tvPrefetch(); if (!$('#tv').hidden) await renderTv(); }
+}
+// subtitle texts are small: the first ready episodes of each drama are kept on the device, so they open offline
+async function tvPrefetch() {
+  if (!Pod.token() || navigator.onLine === false) return;
+  const c = navigator.connection; if (c && c.saveData) return;
+  const [all, fileIds, tk] = await Promise.all([DB.all('books'), DB.keys('files'), DB.get('kv', 'tomb')]), local = new Set(fileIds);
+  const have = new Set(all.filter(b => isTv(b) && local.has(b.id)).map(epKey)), removed = podRemoved(), tomb = (tk && tk.map) || {};
+  const cand = [];
+  for (const x of TVV.shows || []) for (const ep of tvEpisodes(TVV.feeds[x.id])) if (ep.tr) cand.push({ show: x.id, ep });
+  for (const { show, ep } of cand.slice(0, POD_PREFETCH)) {
+    const id = epKeyOf('tv', show, ep.key);
+    if (have.has(id) || removed.has(id) || tomb[tvId(show, ep.key)]) continue;
+    try { await podEnsure(show, ep.key, 'tv'); } catch (e) { console.warn('prefetch', id, e); if (e.offline || e.status === 401 || e.status === 403) break; }
+  }
+}
+// a feed's episodes in order, from episode 1
+const tvEpisodes = feed => ((feed && feed.episodes) || []).filter(ep => ep && ep.key).slice().sort((a, b) => (+a.n || 0) - (+b.n || 0));
+function tvMsg() { const m = $('#tv-msg'); if (m) { m.textContent = TVV.msg; m.hidden = !TVV.msg; m.classList.toggle('bad', TVV.bad); } }
+let tvBusy = null, tvAgain = false;
+function renderTv() {
+  if ($('#tv').hidden) return Promise.resolve();
+  if (tvBusy) { tvAgain = true; return tvBusy; }
+  tvBusy = (async () => { try { do { tvAgain = false; await renderTvNow(); } while (tvAgain && !$('#tv').hidden); } finally { tvBusy = null; } })();
+  return tvBusy;
+}
+async function renderTvNow() {
+  const [all, vocab] = await Promise.all([DB.all('books'), DB.all('vocab')]);
+  const eps = all.filter(isTv), tok = !!Pod.token();
+  tvRefreshTab(eps.length > 0);
+  const vn = {}; vocab.forEach(v => { vn[v.bookId] = (vn[v.bookId] || 0) + 1; });
+  const byKey = new Map(eps.map(b => [epKey(b), b]));
+  const parts = [h('nav', { class: 'topnav' },
+    h('div', { class: 'brand' }, h('span', { class: 'hz' }, '剧'), h('span', { class: 'py' }, 'TV')),
+    h('button', { class: 'btn', onclick: () => tvAskAdd() }, '＋ Ajouter un épisode'),
+    h('button', { class: 'btn', onclick: () => { show('lib'); renderLibrary(); } }, '← Bibliothèque')),
+    h('p', { id: 'tv-msg', class: 'pod-msg' + (TVV.bad ? ' bad' : ''), role: 'status', hidden: !TVV.msg }, TVV.msg)];
+  const epLabel = (ep, b) => { const n = ep ? +ep.n : 0, t = (ep && ep.title) || (b && b.title) || ''; return n && t !== `第${n}集` ? `${n}. ${t}` : t || `Épisode ${n}`; };
+  // ready (stored, or its subtitles in the repo): the whole row opens it
+  const readRow = (show, ep, b, withShow) => {
+    const key = (ep || b.pod).key, id = epKeyOf('tv', show, key), title = epLabel(ep, b), dur = +((b && b.pod.dur) || (ep && ep.dur)) || 0;
+    const p = b ? podProg(b) : { listen: 0, read: 0 }, n = b ? vn[b.id] || 0 : 0, en = b && b.pod && b.pod.en, video = (ep && ep.video) || (b && b.pod.video) || '';
+    const prog = [p.listen > 0.01 ? `vu à ${Math.round(p.listen * 100)} %` : '', p.read > 0.01 ? `lu à ${Math.round(p.read * 100)} %` : ''].filter(Boolean).join(' · ');
+    const st = b && b.stats && b.stats.v === STATS_V ? `${fmtWan(b.stats.chars)} · difficulté ${diffLevel(b.stats)}/6` : '';
+    const open = () => podOpen(show, key, 'tv'), busy = PV.loading.has(id);
+    const showName = withShow ? (((TVV.shows || []).find(x => x.id === show) || {}).title || (b && b.author) || '') : '';
+    const row = h('div', { class: 'pod-ep rd' + (busy ? ' busy' : ''), 'data-id': id, 'aria-busy': String(busy), onclick: e => { if (!e.target.closest('button, a, .pmenu')) open(); } },
+      h('button', { class: 'pplay tvp', 'aria-label': `Regarder « ${title} »`, title: 'Regarder', onclick: open }, h('span', { class: 'zh', style: 'font-size:15px' }, '看')),
+      h('div', null,
+        h('h3', null, h('a', { href: '#', style: 'color:inherit;text-decoration:none', onclick: e => { e.preventDefault(); open(); } }, title)),
+        h('div', { class: 'm' }, [showName, dur ? fmtDur(dur) : '', prog].filter(Boolean).join(' · ')),
+        st || n ? h('div', { class: 'm' }, [st, n ? `${n} mot${n > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')) : null,
+        h('div', { class: 'a' },
+          h('button', { class: 'btn small primary', disabled: busy, onclick: open }, busy ? 'Chargement…' : p.read > 0.01 || p.listen > 0.01 ? 'Reprendre' : 'Regarder'),
+          n ? h('button', { class: 'btn small', onclick: () => showVocab({ bookId: b.id }) }, 'Vocabulaire') : null,
+          en ? h('span', { class: 'pill', title: en.done >= en.total ? 'Avec l’anglais de chaque ligne' : `Anglais pour ${en.done} lignes sur ${en.total}` }, en.done >= en.total ? 'EN' : `EN ${en.done}/${en.total}`) : null,
+          video ? h('a', { class: 'btn small ghost', href: tvWatch(video, 0), target: '_blank', rel: 'noopener', title: 'Ouvrir sur YouTube' }, '▶ YouTube') : null,
+          h('span', { class: 'st bad re', role: 'status', hidden: !PV.rowErr[id] }, PV.rowErr[id] || ''))));
+    if (b) { row.classList.add('has-menu'); row.append(h('details', { class: 'pmenu' }, h('summary', { 'aria-label': 'Plus d’actions', title: 'Plus d’actions' }, '⋯'),
+      h('div', { class: 'pmenu-l' }, h('button', { class: 'btn small ghost danger', onclick: e => { e.currentTarget.closest('details').open = false; podAskRemove(b, n); } }, 'Retirer de l’appareil')))); }
+    return row;
+  };
+  // subtitles not in the repo yet: dimmed, only the video on YouTube
+  const rawRow = ep => h('div', { class: 'pod-ep dim' }, h('span'),
+    h('div', null, h('h3', null, epLabel(ep, null)), h('div', { class: 'm' }, [ep.dur ? fmtDur(ep.dur) : '', 'texte à venir'].filter(Boolean).join(' · ')),
+      YT_ID.test(ep.video || '') ? h('div', { class: 'a' }, h('a', { class: 'btn small', href: tvWatch(ep.video, 0), target: '_blank', rel: 'noopener', title: 'Ouvrir sur YouTube' }, '▶ YouTube')) : null));
+  const started = eps.filter(podStarted).sort((a, b) => (b.lastRead || b.addedAt || 0) - (a.lastRead || a.addedAt || 0));
+  if (started.length) parts.push(h('section', { class: 'pod-sec', 'data-sec': 'encours' }, h('h2', { class: 'pod-h' }, 'En cours'),
+    h('div', { class: 'pod-list' }, started.map(b => readRow(b.pod.show, null, b, true)))));
+  const known = new Set();
+  for (const x of TVV.shows || []) {
+    known.add(x.id);
+    const feed = tok ? TVV.feeds[x.id] : null, rows = [], seen = new Set();
+    for (const ep of tvEpisodes(feed)) { seen.add(ep.key); const b = byKey.get(epKeyOf('tv', x.id, ep.key)); rows.push(b || ep.tr ? readRow(x.id, ep, b) : rawRow(ep)); }
+    const mine = eps.filter(b => b.pod.show === x.id && !seen.has(b.pod.key)).sort((a, b) => String(a.pod.key).localeCompare(String(b.pod.key)));
+    mine.forEach(b => rows.push(readRow(x.id, null, b)));
+    if (!rows.length && !feed) continue;
+    const ch = safeURL(x.channel), listed = rows.length;
+    parts.push(h('section', { class: 'pod-sec', 'data-sec': x.id },
+      h('h2', { class: 'pod-sh' }, h('span', { class: 'pod-h zh' }, x.title || x.id), x.en ? h('span', { class: 'n' }, x.en) : null),
+      h('p', { class: 'tv-show-m' }, [x.year, x.by, x.total ? `${listed} épisode${listed > 1 ? 's' : ''} sur ${x.total}` : ''].filter(Boolean).join(' · '),
+        ch ? [' · ', h('a', { href: ch, target: '_blank', rel: 'noopener' }, 'chaîne YouTube')] : null),
+      h('div', { class: 'pod-list' }, rows.length ? rows : h('p', { class: 'muted' }, 'Aucun épisode dans la liste.'))));
+  }
+  const others = eps.filter(b => !known.has(b.pod.show)).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+  if (others.length) parts.push(h('section', { class: 'pod-sec', 'data-sec': 'local' }, h('h2', { class: 'pod-h' }, 'Ajoutés sur cet appareil'),
+    h('div', { class: 'pod-list' }, others.map(b => readRow(b.pod.show, null, b, true)))));
+  if (!(TVV.shows || []).length && !eps.length) parts.push(h('p', { class: 'muted', style: 'font-size:13.5px' }, tok ? (TVV.bad ? '' : 'Chargement de la liste…') : 'Aucun épisode enregistré.'));
+  parts.push(h('p', { class: 'muted', style: 'font-size:12.5px' }, 'Les vidéos se lisent dans le lecteur de YouTube, depuis la chaîne qui les publie. Le texte vient des sous-titres publiés par la chaîne quand il y en a, sinon d’une transcription automatique (non relue) ; les sous-titres incrustés dans l’image permettent de vérifier à l’œil. « Ajouter un épisode » : un lien YouTube et un fichier .srt ou .vtt.'));
+  $('#tv-main').replaceChildren(...parts);
+}
+
+/* ----- an episode added on the device: a YouTube link and a subtitle file (.srt / .vtt), cleaned as in tools/tv.py ----- */
+const SUB_TS = /^(?:(\d+):)?(\d{1,2}):(\d{1,2})[.,](\d{1,3})$/;
+const SUB_ARROW = /^\s*((?:\d+:)?\d{1,2}:\d{1,2}[.,]\d{1,3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{1,2}[.,]\d{1,3})/;
+function subTs(x) { const m = SUB_TS.exec(String(x).trim()); if (!m) return NaN; return (+m[1] || 0) * 3600 + +m[2] * 60 + +m[3] + +m[4].padEnd(3, '0') / 1000; }
+const subEnt = s => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (all, e) => { const l = e.toLowerCase(); return l === 'amp' ? '&' : l === 'lt' ? '<' : l === 'gt' ? '>' : l === 'quot' ? '"' : l === 'apos' ? "'" : l === 'nbsp' ? ' ' : (() => { try { return String.fromCodePoint(l[1] === 'x' ? parseInt(l.slice(2), 16) : +l.slice(1)); } catch { return all; } })(); });
+// any supported track -> [[start, end, [lines]]]: SRT, WebVTT, YouTube XML (srv1 <text start dur>, srv3 <p t d> in ms)
+function subsParse(text) {
+  text = String(text).replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const out = [];
+  if (/^<(\?xml|transcript|timedtext)/.test(text.trimStart())) {
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    for (const el of doc.querySelectorAll('text[start], p[t]')) {
+      const srv1 = el.localName === 'text', s = srv1 ? +el.getAttribute('start') : +el.getAttribute('t') / 1000, d = srv1 ? +el.getAttribute('dur') || 0 : (+el.getAttribute('d') || 0) / 1000;
+      if (isFinite(s)) out.push([s, s + d, el.textContent.split('\n')]);
+    }
+    return out;
+  }
+  for (const block of text.split(/\n[ \t]*\n/)) {
+    const lines = block.split('\n'), k = lines.findIndex(l => l.includes('-->')); if (k < 0) continue;
+    if (k > 0 && /^(NOTE|STYLE|REGION)\b/.test(lines[0].trim())) continue;
+    const m = SUB_ARROW.exec(lines[k]); if (!m) continue;
+    out.push([subTs(m[1]), subTs(m[2]), lines.slice(k + 1).filter(l => l.trim())]);
+  }
+  return out;
+}
+const SUB_MUSIC = /[♪♫♬♩🎵🎶]+/gu, SUB_MTAG = /[[(（【]\s*(音乐|音樂|music|歌声|歌聲|背景音乐|背景音樂|片头曲|片頭曲|片尾曲|主题曲|主題曲)\s*[\])）】]/gi;
+const SUB_DASH = /^\s*[-‐–—]+\s*/, SUB_WORDY = /[0-9A-Za-z㐀-鿿豈-﫿\u{20000}-\u{3ffff}]/u;
+const subLine = l => subEnt(subEnt(l.replace(/\{\\[^}]*\}/g, '').replace(/<[^>]*>/g, ''))).replace(/[ 　]/g, ' ').replace(/​/g, '')
+  .replace(SUB_MTAG, '').replace(SUB_MUSIC, '').replace(/\s+/g, ' ').trim();
+function subCueText(lines) {
+  let ls = lines.map(subLine).filter(Boolean);
+  if (ls.length && ls.every(l => SUB_DASH.test(l))) ls = ls.map(l => l.replace(SUB_DASH, '')).filter(Boolean);
+  const t = ls.join(' ').trim();
+  return SUB_WORDY.test(t) ? t : '';
+}
+// same rules as tools/tv.py clean_cues: tags/positioning/karaoke out, music-only and empty cues dropped, lines joined with
+// one space, rolling repeats removed, sorted, same-start cues joined, consecutive duplicates (≤ 1 s apart) and grown cues
+// merged, overlapping ends clamped, 2 decimals, inside [0, dur]. The track's own script is kept (no conversion).
+function subsClean(raw, dur) {
+  const items = []; let prev = [];
+  for (const [s0, e0, lines] of raw.filter(c => isFinite(c[0])).sort((a, b) => a[0] - b[0])) {
+    const cl = lines.map(subLine).filter(Boolean);
+    let k = 0;
+    for (let j = Math.min(cl.length - 1, prev.length); j > 0; j--) if (cl.slice(0, j).join('\n') === prev.slice(-j).join('\n')) { k = j; break; }
+    if (cl.length) prev = cl;
+    const t = subCueText(cl.slice(k)); if (!t) continue;
+    const s = Math.max(0, s0); items.push([s, Math.max(s, isFinite(e0) ? e0 : s), t]);
+  }
+  const out = [];
+  for (const it of items) {
+    const a = out[out.length - 1];
+    if (a && Math.abs(it[0] - a[0]) < 0.01 && it[2] !== a[2]) { a[2] += ' ' + it[2]; a[1] = Math.max(a[1], it[1]); continue; }
+    if (a && it[2] === a[2] && it[0] - a[1] <= 1) { a[1] = Math.max(a[1], it[1]); continue; }
+    if (a && it[0] - a[1] <= 0.05 && it[2].startsWith(a[2]) && it[2].length > a[2].length) { a[1] = Math.max(a[1], it[1]); a[2] = it[2]; continue; }
+    out.push(it);
+  }
+  const r2 = x => Math.round(x * 100) / 100, segs = [];
+  out.forEach(([s, e, t], i) => {
+    if (i + 1 < out.length && e > out[i + 1][0]) e = out[i + 1][0];
+    s = r2(s); e = r2(Math.max(e, s));
+    if (dur != null) { if (s >= dur) return; e = Math.min(e, dur); }
+    if (segs.length && s < segs[segs.length - 1].s) s = segs[segs.length - 1].s;
+    segs.push({ s, e: Math.max(e, s), t });
+  });
+  return segs;
+}
+// a YouTube address (watch, youtu.be, embed, shorts, live) or a bare id -> the 11-character id
+function ytIdOf(x) {
+  x = String(x || '').trim(); if (YT_ID.test(x)) return x;
+  const m = /(?:[?&]v=|youtu\.be\/|\/(?:embed|shorts|live|v)\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/.exec(x);
+  return m ? m[1] : '';
+}
+async function subsText(file) {
+  const b = new Uint8Array(await file.arrayBuffer());
+  if (b[0] === 0xFF && b[1] === 0xFE) return new TextDecoder('utf-16le').decode(b);
+  if (b[0] === 0xFE && b[1] === 0xFF) return new TextDecoder('utf-16be').decode(b);
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(b); } catch { return new TextDecoder('gb18030').decode(b); }
+}
+// the transcript object of the contract (show 'local'), from the subtitle file
+async function tvBuild({ video, title, series, file }) {
+  const raw = subsParse(await subsText(file)), segs0 = subsClean(raw);
+  if (!segs0.length) throw new Error('aucun sous-titre lisible dans ce fichier (.srt ou .vtt attendu)');
+  const dur = Math.max(1, Math.ceil(segs0[segs0.length - 1].e)), lang = (/\.([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})*)\.(srt|vtt|xml)$/i.exec(file.name) || [])[1];
+  return { v: 1, show: 'local', showTitle: series, key: video, title, date: '', dur, video, link: tvWatch(video, 0), engine: 'subs', model: lang ? lang.replace('_', '-') : 'zh',
+    made: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), clip: null, speakers: 0, chapters: [], segs: subsClean(raw, dur) };
+}
+function tvAskAdd(file0) {
+  let file = file0 || null;
+  const err = h('p', { class: 'pod-msg bad', role: 'alert', hidden: true, style: 'margin:0' });
+  const link = h('input', { type: 'url', inputmode: 'url', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://www.youtube.com/watch?v=…', 'aria-label': 'Lien YouTube' });
+  const ser = h('input', { type: 'text', autocomplete: 'off', placeholder: '漫长的季节', 'aria-label': 'Série' });
+  const ttl = h('input', { type: 'text', autocomplete: 'off', placeholder: 'Épisode 1', 'aria-label': 'Titre de l’épisode' });
+  const fname = h('span', { class: 'muted', style: 'font-size:13px' }, file ? file.name : 'Aucun fichier choisi');
+  const fin = h('input', { type: 'file', accept: '.srt,.vtt,text/vtt,application/x-subrip', hidden: true, onchange: e => { file = e.target.files[0] || null; fname.textContent = file ? file.name : 'Aucun fichier choisi'; } });
+  const go = h('button', { class: 'btn primary', onclick: async () => {
+    err.hidden = true;
+    const video = ytIdOf(link.value);
+    const fail = t => { err.textContent = t; err.hidden = false; };
+    if (!video) return fail('Colle le lien de la vidéo YouTube (ou son identifiant de 11 caractères).');
+    if (!file) return fail('Choisis le fichier de sous-titres chinois (.srt ou .vtt).');
+    go.disabled = true; go.textContent = 'Ajout…';
+    try {
+      const tr = await tvBuild({ video, title: ttl.value.trim() || 'Épisode', series: ser.value.trim(), file });
+      m.close();
+      await importFiles([new File([JSON.stringify(tr)], video + '.json', { type: 'application/json' })]);
+    } catch (e) { fail('Fichier illisible : ' + e.message); go.disabled = false; go.textContent = 'Ajouter'; }
+  } }, 'Ajouter');
+  const m = modal('Ajouter un épisode', h('div', { class: 'pb tv-add' },
+    h('p', { class: 'muted', style: 'margin:0;font-size:13px' }, 'Une vidéo publiée par la chaîne de la série sur YouTube, et son fichier de sous-titres chinois (.srt ou .vtt, par exemple récupéré avec downsub.com). Le texte reste sur cet appareil (et ton Google Drive si la synchro est active).'),
+    h('label', null, 'Lien YouTube', link), h('label', null, 'Série (facultatif)', ser), h('label', null, 'Titre de l’épisode', ttl),
+    h('div', { class: 'confirm-row' }, h('button', { class: 'btn', onclick: () => fin.click() }, 'Choisir le fichier…'), fname, fin),
+    err, h('div', { class: 'confirm-row' }, go, h('button', { class: 'btn', onclick: () => m.close() }, 'Annuler'))));
+}
+
 /* ================= Android back button ================= */
 // while anything sits above the library (reader, vocabulary, a sheet, the pop-up), one extra history entry
 // makes the phone's back gesture close it instead of leaving the app
 const Back = {
   guard: false, skip: false, t: 0,
-  open() { return !!topLayer() || (!$('#pop').hidden && (isTouch() || P.pinned)) || !$('#notepop').hidden || !$('#reader').hidden || !$('#voc').hidden || !$('#thm').hidden || !$('#pod').hidden; },
+  open() { return !!topLayer() || (!$('#pop').hidden && (isTouch() || P.pinned)) || !$('#notepop').hidden || !$('#reader').hidden || !$('#voc').hidden || !$('#thm').hidden || !$('#pod').hidden || !$('#tv').hidden; },
   sync() {
     const open = this.open();
     if (open && !this.guard) { try { history.pushState({ shujia: 1 }, ''); this.guard = true; } catch {} }
@@ -4966,16 +5463,16 @@ addEventListener('popstate', () => {
   else if (!$('#notepop').hidden) $('#notepop').hidden = true;
   else if (!$('#pop').hidden) hidePop();
   else if (!$('#voc').hidden || !$('#thm').hidden) { if (V.from === 'reader' && R.book) { show('reader'); restorePos(); } else { show('lib'); renderLibrary(); } }
-  else if (!$('#pod').hidden) { show('lib'); renderLibrary(); }
-  else if (!$('#reader').hidden) closeReader(false); // from an episode: back to the Podcasts tab
+  else if (!$('#pod').hidden || !$('#tv').hidden) { show('lib'); renderLibrary(); }
+  else if (!$('#reader').hidden) closeReader(false); // from an episode: back to the Podcasts (or TV) tab
   Back.soon();
 });
 new MutationObserver(() => Back.soon()).observe(document.body, { childList: true });
-for (const id of ['reader', 'voc', 'thm', 'pod', 'pop', 'notepop']) new MutationObserver(() => Back.soon()).observe($('#' + id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['reader', 'voc', 'thm', 'pod', 'tv', 'pop', 'notepop']) new MutationObserver(() => Back.soon()).observe($('#' + id), { attributes: true, attributeFilter: ['hidden'] });
 
 /* ================= navigation & boot ================= */
 function show(view) {
-  for (const id of ['lib', 'voc', 'thm', 'pod', 'reader']) $('#' + id).hidden = id !== view;
+  for (const id of ['lib', 'voc', 'thm', 'pod', 'tv', 'reader']) $('#' + id).hidden = id !== view;
   document.body.classList.toggle('reading', view === 'reader');
   if (view !== 'reader') { hidePop(); ttsStop(true); $('#notepop').hidden = true; }
   if (PA.host && PA.host !== view) paStop(); // the audio belongs to the view that started it
@@ -4984,6 +5481,7 @@ function show(view) {
 $('#nav-voc').addEventListener('click', () => showVocab({ bookId: '' }));
 $('#nav-log').addEventListener('click', () => showJournal());
 $('#nav-pod').addEventListener('click', () => showPodcasts());
+$('#nav-tv').addEventListener('click', () => showTv());
 $('#nav-thm').hidden = !THEMES_ON;
 if (THEMES_ON) $('#nav-thm').addEventListener('click', () => showThemes());
 $$('#theme-seg button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.v)));
@@ -5069,7 +5567,7 @@ const SAMPLE = `第一章 雨天
   setTimeout(() => Dict.load().then(() => Words.load()).catch(() => {}), 1200);
   setTimeout(() => loadZip().catch(() => {}), 2500);
   if (Sync.enabled()) { if (Sync.token()) setTimeout(() => Sync.run(false), 1500); else Sync.setStatus('Reconnexion nécessaire'); }
-  Pod.refreshTab(books.some(isEp));
+  Pod.refreshTab(books.some(isPod)); tvRefreshTab(books.some(isTv));
   // the token may have expired since; then the episodes are brought up to date in the background
   if (Pod.token() && navigator.onLine !== false) setTimeout(async () => { await Pod.check(); if (Pod.on()) podAuto(); }, 2000);
   // back in the foreground: same refresh (at most every 10 minutes)
