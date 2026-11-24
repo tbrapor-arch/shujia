@@ -888,15 +888,17 @@ function segment(ns) {
 // split a word with no dictionary entry into dictionary words (longest match)
 function cedictParts(w) {
   const parts = []; let i = 0;
-  while (i < w.length) { let L = Math.min(Dict.maxLen, w.length - i); for (; L > 1; L--) if (Dict.entries(w.slice(i, i + L))) break; parts.push(w.slice(i, i + L)); i += L; }
+  // (never the whole word itself: 一本 has a Wiktionary entry, its literal parts are 一 + 本)
+  while (i < w.length) { let L = Math.min(Dict.maxLen, w.length - i, i ? Infinity : w.length - 1); for (; L > 1; L--) if (Dict.entries(w.slice(i, i + L))) break; parts.push(w.slice(i, i + L)); i += L; }
   return parts;
 }
 // synthetic entry for a word known to jieba but missing from CC-CEDICT (用人单位 = 用人 + 单位)
 // readings CC-CEDICT lists that are rare in modern text: archaic senses, radicals, "used in X" (听 yǐn, 厂 hǎn, 假 gēi…)
 const MINOR_RE = /archaic|obsolete|^old variant of|^used in |radical|^see |Japanese variant|\(old\)|^\(dialect\)|^\(Cantonese\)/i;
-const pyPref = (c, e) => (typeof PY_DEFAULT !== 'undefined' && PY_DEFAULT[c] === e.pinyin) ? 1 : 0;
+// (traditional characters fall back on their simplified form: 體 → 体 tǐ, not the rare tī of 體己)
+const pyPref = (c, e) => (typeof PY_DEFAULT !== 'undefined' && (PY_DEFAULT[c] || PY_DEFAULT[e.simp]) === e.pinyin) ? 1 : 0;
 // most frequent reading of polyphonic characters, weighted by how often the words using each reading occur (CC-CEDICT × jieba frequencies, computed offline)
-const READ_MAIN = {}; '丧sang4 中zhong1 为wei2 么me5 亟ji2 亲qin1 什shen2 仆pu2 仇chou2 仔zi3 令ling4 价jia4 会hui4 传chuan2 伯bo2 伽jia1 佃dian4 作zuo4 佣yong1 供gong1 侧ce4 俊jun4 倒dao3 倥kong3 假jia3 冠guan4 冲chong1 凉liang2 几ji3 凹ao1 分fen1 切qie4 划hua4 创chuang4 刨bao4 别bie2 刷shua1 刹cha4 刺ci4 削xue1 剥bo1 剿jiao3 劈pi1 劲jin4 勒le4 化hua4 匮kui4 卒zu2 占zhan4 卡ka3 参can1 叉cha1 发fa1 句ju4 叨dao1 只zhi3 叶ye4 号hao4 吁yu4 合he2 吐tu3 吓xia4 吗ma2 否fou3 吧ba1 吭keng1 吱zhi1 呀ya1 呐na4 呒m2 呗bai4 呛qiang4 呢ni2 呵he1 呶nao2 咀ju3 咋ze2 和he2 咔ka1 咧lie3 咯ge1 咳ke2 哄hong1 哇wa1 哈ha1 哑ya3 哗hua2 哦e2 哩li5 哪na3 哺bu3 哼heng1 唉ai1 唯wei2 啊a1 啦la1 喂wei4 喇la3 喷pen1 喽lou2 嗳ai3 嘎ga1 囤tun2 囱cong1 圈quan1 圜huan2 圣sheng4 地di4 场chang3 坊fang1 垛duo3 堡bao3 夫fu1 夯hang1 头tou2 夹jia1 奄yan3 奇qi2 奔ben1 好hao3 妻qi1 姥lao3 娜nuo2 娩mian3 宿su4 少shao3 尺chi3 尾wei3 尿niao4 屏ping2 属shu3 岗gang3 崭zhan3 差cha1 帖tie3 庑wu3 底di3 度du4 弄nong4 弟di4 弹dan4 强qiang2 当dang1 待dai4 怔zheng4 怼dui4 恶e4 戆gang4 扁bian3 扇shan4 扎zha1 打da3 扫sao3 扳ban1 把ba3 折zhe2 抢qiang3 抹mo3 担dan1 拉la1 拓tuo4 拚pan4 拽zhuai4 拾shi2 挑tiao3 挡dang3 捋luo1 掖ye4 掺chan1 揣chuai3 揾wen4 搁ge1 搂lou3 摸mo1 撇pie1 撒sa1 撮cuo1 操cao1 攒zan3 教jiao4 敛lian3 散san4 数shu4 斗dou4 旄mao2 旋xuan2 暴bao4 曾ceng2 服fu2 朝chao2 末mo4 术shu4 朴pu3 杈cha4 杓shao2 杠gang4 板ban3 柏bai3 柜gui4 查cha2 校xiao4 桁heng2 桡rao2 档dang4 椎zhui1 楂zha1 楞leng2 楷kai3 榜bang3 槛kan3 模mo2 横heng2 欸ai3 正zheng4 歪wai1 殷yin1 比bi3 汤tang1 沓ta4 沙sha1 没mei2 沤ou4 泡pao4 泥ni2 洇yin1 浅qian3 浆jiang1 涌yong3 涡wo1 涨zhang3 淋lin2 混hun4 渐jian4 渠qu2 湮yan1 溜liu1 溺ni4 漂piao1 濯zhuo2 瀑pu4 炮pao4 炸zha4 煞sha4 熨yun4 熬ao2 率lu:4 王wang2 玢fen1 甚shen4 甬yong3 甭beng2 症zheng4 瘅dan4 监jian1 盛sheng4 相xiang1 省sheng3 看kan4 眯mi1 着zhe5 石shi2 磕ke1 磨mo2 禅chan2 种zhong3 秤cheng4 称cheng1 稽ji1 空kong1 窨yin4 窾kuan3 答da2 粘nian2 糊hu2 糜mi2 系xi4 累lei3 絜xie2 纤xian1 约yue1 结jie2 络luo4 绰chuo4 绷beng1 综zong1 缀zhui4 缉ji1 罢ba4 翘qiao2 耙pa2 耶ye2 背bei4 胖pang4 脏zang4 脚jiao3 脯pu2 腊la4 膀bang3 膏gao1 臊sao4 臭chou4 艮gen4 色se4 艾ai4 茄qie2 草cao3 荫yin1 莘shen1 莞wan3 莩piao3 菌jun1 菲fei3 落luo4 蒙meng2 蓼liao3 蔓man4 蕃fan1 薄bo2 藏cang2 蜇zhe2 行xing2 衩cha3 衰shuai1 裨bi4 褪tui4 褶zhe3 要yao4 见jian4 观guan1 觉jue2 角jiao3 解jie3 识shi2 语yu3 说shuo1 读du2 谩man4 豁huo4 貉he2 贲ben1 赚zhuan4 足zu2 跂qi3 跄qiang4 跑pao3 轧ya4 蹲dun1 转zhuan3 辟pi4 边bian1 过guo4 还hai2 这zhe4 远yuan3 追zhui1 通tong1 逮dai4 那na4 都du1 酢zuo4 重zhong4 量liang4 钉ding1 钻zuan1 铛dang1 铣xi3 铤ting3 铮zheng1 锯ju4 镏liu2 镐gao3 镪qiang1 长zhang3 间jian1 闷men4 阿a1 陂bei1 陆lu4 降jiang4 隆long2 隐yin3 隽juan4 难nan2 雀que4 雨yu3 露lu4 靓liang4 靡mi3 页ye4 顷qing3 颏ke1 食shi2 饮yin3 馏liu2 驮tuo2 骑qi2 鲜xian1 鹄hu2 龈yin2 龟gui1'.split(' ').forEach(t => { READ_MAIN[t[0]] = t.slice(1); });
+const READ_MAIN = {}; '丧sang4 中zhong1 为wei2 么me5 亟ji2 亲qin1 什shen2 仆pu2 仇chou2 仔zi3 令ling4 价jia4 会hui4 传chuan2 伯bo2 伽jia1 佃dian4 作zuo4 佣yong1 供gong1 侧ce4 俊jun4 倒dao3 倥kong3 假jia3 冠guan4 冲chong1 凉liang2 几ji3 凹ao1 分fen1 切qie4 划hua4 创chuang4 刨bao4 别bie2 刷shua1 刹cha4 刺ci4 削xue1 剥bo1 剿jiao3 劈pi1 劲jin4 勒le4 化hua4 匮kui4 卒zu2 占zhan4 卡ka3 参can1 叉cha1 发fa1 句ju4 叨dao1 只zhi3 叶ye4 号hao4 吁yu4 合he2 吐tu3 吓xia4 吗ma2 否fou3 吧ba1 吭keng1 吱zhi1 呀ya1 呐na4 呒m2 呗bai4 呛qiang4 呢ni2 呵he1 呶nao2 咀ju3 咋ze2 和he2 咔ka1 咧lie3 咯ge1 咳ke2 哄hong1 哇wa1 哈ha1 哑ya3 哗hua2 哦e2 哩li5 哪na3 哺bu3 哼heng1 唉ai1 唯wei2 啊a1 啦la1 喂wei4 喇la3 喷pen1 喽lou2 嗳ai3 嘎ga1 囤tun2 囱cong1 圈quan1 圜huan2 圣sheng4 地di4 场chang3 坊fang1 垛duo3 堡bao3 夫fu1 夯hang1 头tou2 夹jia1 奄yan3 奇qi2 奔ben1 好hao3 妻qi1 姥lao3 娜nuo2 娩mian3 宿su4 少shao3 尺chi3 尾wei3 尿niao4 屏ping2 属shu3 岗gang3 崭zhan3 差cha1 帖tie3 庑wu3 底di3 度du4 弄nong4 弟di4 弹dan4 强qiang2 当dang1 待dai4 怔zheng4 怼dui4 恶e4 戆gang4 扁bian3 扇shan4 扎zha1 打da3 扫sao3 扳ban1 把ba3 折zhe2 抢qiang3 抹mo3 担dan1 拉la1 拓tuo4 拚pan4 拽zhuai4 拾shi2 挑tiao3 挡dang3 捋luo1 掖ye4 掺chan1 揣chuai3 揾wen4 搁ge1 搂lou3 摸mo1 撇pie1 撒sa1 撮cuo1 操cao1 攒zan3 教jiao4 敛lian3 散san4 数shu4 斗dou4 旄mao2 旋xuan2 暴bao4 曾ceng2 服fu2 朝chao2 末mo4 术shu4 朴pu3 杈cha4 杓shao2 杠gang4 板ban3 柏bai3 柜gui4 查cha2 校xiao4 桁heng2 桡rao2 档dang4 椎zhui1 楂zha1 楞leng2 楷kai3 榜bang3 槛kan3 模mo2 横heng2 欸ai3 正zheng4 歪wai1 殷yin1 比bi3 汤tang1 沓ta4 沙sha1 没mei2 沤ou4 泡pao4 泥ni2 洇yin1 浅qian3 浆jiang1 涌yong3 涡wo1 涨zhang3 淋lin2 混hun4 渐jian4 渠qu2 湮yan1 溜liu1 溺ni4 漂piao1 濯zhuo2 瀑pu4 炮pao4 炸zha4 煞sha4 熨yun4 熬ao2 率lu:4 王wang2 玢fen1 甚shen4 甬yong3 甭beng2 症zheng4 瘅dan4 监jian1 盛sheng4 相xiang1 省sheng3 看kan4 眯mi1 着zhe5 石shi2 磕ke1 磨mo2 禅chan2 种zhong3 秤cheng4 称cheng1 稽ji1 空kong1 窨yin4 窾kuan3 答da2 粘nian2 糊hu2 糜mi2 系xi4 累lei3 絜xie2 纤xian1 约yue1 结jie2 络luo4 绰chuo4 绷beng1 综zong1 缀zhui4 缉ji1 罢ba4 翘qiao2 耙pa2 耶ye2 背bei4 胖pang4 脏zang4 脚jiao3 脯pu2 腊la4 膀bang3 膏gao1 臊sao4 臭chou4 艮gen4 色se4 艾ai4 茄qie2 草cao3 荫yin1 莘shen1 莞wan3 莩piao3 菌jun1 菲fei3 落luo4 蒙meng2 蓼liao3 蔓man4 蕃fan1 薄bo2 藏cang2 蜇zhe2 行xing2 衩cha3 衰shuai1 裨bi4 褪tui4 褶zhe3 要yao4 见jian4 观guan1 觉jue2 角jiao3 解jie3 识shi2 语yu3 说shuo1 读du2 谩man4 豁huo4 貉he2 贲ben1 赚zhuan4 足zu2 跂qi3 跄qiang4 跑pao3 轧ya4 蹲dun1 转zhuan3 辟pi4 边bian1 过guo4 还hai2 这zhe4 远yuan3 追zhui1 通tong1 逮dai4 那na4 都du1 酢zuo4 重zhong4 量liang4 钉ding1 钻zuan1 铛dang1 铣xi3 铤ting3 铮zheng1 锯ju4 镏liu2 镐gao3 镪qiang1 长zhang3 间jian1 闷men4 阿a1 陂bei1 陆lu4 降jiang4 隆long2 隐yin3 隽juan4 难nan2 雀que4 雨yu3 露lu4 靓liang4 靡mi3 页ye4 顷qing3 颏ke1 食shi2 饮yin3 馏liu2 驮tuo2 骑qi2 鲜xian1 鹄hu2 龈yin2 龟gui1 丁ding1 万wan4 上shang4 个ge4 丽li4 乌wu1 乘cheng2 乙yi3 乾qian2 予yu3 估gu1 伺ci4 似si4 体ti3 佚yi4 佝gou1 侥jiao3 侯hou2 便bian4 俩lia3 倔jue2 倘tang3 偻lou2 傀kui3 免mian3 六liu4 兹zi1 写xie3 勾gou1 匙shi5 华hua2 单dan1 南nan2 卜bu3 厂chang3 压ya1 厕ce4 可ke3 台tai2 同tong2 听ting1 吵chao3 呤ling4 咖ka1 咱zan2 唠lao2 嘀di2 嘛ma5 嘲chao2 嚓cha1 嚼jiao2 囊nang2 坷ke3 埋mai2 大da4 女nu:3 姆mu3 委wei3 孱chan2 宕dang4 尉wei4 居ju1 屯tun2 岂qi3 岭ling3 峙zhi4 嵌qian4 广guang3 怂song3 悄qiao1 戌xu1 戛jia2 拂fu2 挟xie2 挲suo1 据ju4 提ti2 摩mo2 擞sou3 无wu2 曝bao4 枸gou3 栖qi1 格ge2 棱leng2 氏shi4 氓mang2 汗han4 泌mi4 洗xi3 洞dong4 派pai4 济ji4 浚jun4 溃kui4 潦liao2 烙lao4 片pian4 牟mou2 猫mao1 疟nu:e4 疸dan3 瘩da5 瞭liao4 矫jiao3 砌qi4 碌lu4 离li2 秘mi4 稍shao1 簸bo3 粥zhou1 红hong2 绦tao1 绿lu:4 缥piao1 缪mou2 胳ge1 脉mai4 腌yan1 舌she2 般ban1 节jie2 芍shao2 芥jie4 芯xin1 苔tai2 若ruo4 荤hun1 著zhu4 蕉jiao1 虾xia1 蚂ma3 蛇she2 蛤ha2 蜚fei1 血xue4 衣yi1 裳shang5 谜mi2 踉liang4 踏ta4 蹊qi1 蹬deng1 蹶jue2 车che1 轴zhou2 辗zhan3 迫po4 适shi4 遂sui4 采cai3 铅qian1 阙que4 颈jing3 骨gu3 鸟niao3'.split(' ').forEach(t => { READ_MAIN[t[0]] = t.slice(1); });
 const WORD_PY = { 地方: 'di4 fang5', 生意: 'sheng1 yi5', 教授: 'jiao4 shou4', 所长: 'suo3 zhang3', 到了: 'dao4 le5', 都会: 'dou1 hui4', 不了: 'bu4 liao3', 起来: 'qi3 lai5' };
 const readPref = e => READ_MAIN[e.simp] === e.pinyin.toLowerCase() ? 1 : 0;
 const isMinor = e => (e.defs.length && e.defs.every(d => MINOR_RE.test(d))) ? 1 : 0;
@@ -909,7 +911,8 @@ const pyKey = p => String(p || '').toLowerCase().replace(/u:/g, 'v').replace(/\s
 function refTarget(d, from, depth = 0) {
   const m = d.match(REF_RE); if (!m) return null;
   const w = m[2] || m[1], py = m[3]; const es = Dict.entries(w) || (m[2] ? Dict.entries(m[1]) : null); if (!es) return null;
-  const pool = es.filter(x => !x.proper && x !== from); if (!pool.length) return null;
+  // a place name points to a place name (湖南 → 湖南 province): proper entries count when the source is one
+  const pool = es.filter(x => x !== from && (!x.proper || (from && from.proper))); if (!pool.length) return null;
   const same = pool.filter(x => pyKey(x.pinyin) === pyKey(py));
   const cands = same.length ? same : pool;
   let t = cands.find(x => !isRefOnly(x)) || cands[0];
@@ -959,11 +962,12 @@ function partGloss(e, n = 3) {
 // definitions kept with a saved word
 const senseDefs = x => (x.synthetic && x.parts ? x.parts.map(p => `${p.w} ${pinyinText(p.py)} : ${p.d}`) : expandDefs(x)).slice(0, 5);
 // a character often has several entries with the same reading (困 "to trap" and 睏→困 "sleepy"): show them all, they are all possible here
-function charGloss(c, e) {
+// (the richest first: 台 "platform; Taiwan" from 臺 before 台 "(classical) you")
+function charGloss(c, e, n1 = 9, n2 = 2) {
   const same = (Dict.entries(c) || []).filter(x => !x.proper && !isRefOnly(x) && !isMinor(x) && pyKey(x.pinyin) === pyKey(e.pinyin));
-  if (same.length < 2) return partGloss(e, 9);
-  const first = same.includes(e) ? e : same[0];
-  return [first, ...same.filter(x => x !== first)].slice(0, 3).map((x, i) => partGloss(x, i ? 2 : 9)).join(' | ');
+  if (same.length < 2) return partGloss(e, n1);
+  same.sort((x, y) => y.defs.length - x.defs.length);
+  return same.slice(0, 3).map((x, i) => partGloss(x, i ? n2 : n1)).join(' | ');
 }
 function compoundEntry(w, nw) {
   const word = nw || w;
@@ -3100,6 +3104,13 @@ function showHit(hit, x, y, pinned) {
       const ce = compoundEntry(hit.str.slice(0, L), nw); if (ce) { results.unshift({ word: hit.str.slice(0, L), entries: [ce] }); break; }
     }
   }
+  // a Wiktionary word known only as a name, or a number + measure word with only idiomatic senses: give its literal sense too
+  // (城南 "Seongnam" — or "south of the town"; 一本 "having the same origin" — or "one volume")
+  const r0 = results[0];
+  if (r0.word.length > 1 && r0.entries.every(e => e.wikt) && (r0.entries.every(e => e.proper) || (r0.word.length === 2 && /^[一二三四五六七八九十两兩几幾半每]/.test(r0.word)))) {
+    const ce = compoundEntry(results[0].word, normZh(results[0].word, bookIsTrad()));
+    if (ce) results[0] = { word: results[0].word, entries: [...results[0].entries, Object.assign(ce, { literal: true })] };
+  }
   P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y }; P.stack = [];
   renderPop();
 }
@@ -3147,8 +3158,8 @@ function neighbours(w) {
 function synthHTML(e) {
   const allChars = e.parts.every(p => [...p.w].length === 1);
   const guess = e.suf ? `<div class="guess">≈ ${esc(e.suf.gloss).split('…').join(`<span class="zh">${esc(e.suf.head)}</span>`)}<small><span class="zh">…${esc(e.suf.suf)}</span> en fin de mot : ${esc(e.suf.gloss)}</small></div>` : '';
-  return `<div class="ent syn"><div class="py">${pinyinHTML(e.pinyin)}<span class="proper" title="Mot connu du découpeur (jieba) mais absent de CC-CEDICT">absent du dictionnaire</span></div>
-    <div class="syn-note">Pas de définition pour ce mot entier. Sens à déduire de ${allChars ? 'ses caractères' : 'ses parties'} :</div>${guess}
+  return `<div class="ent syn"><div class="py">${pinyinHTML(e.pinyin)}${e.literal ? '' : '<span class="proper" title="Mot connu du découpeur (jieba) mais absent des dictionnaires">absent du dictionnaire</span>'}</div>
+    <div class="syn-note">${e.literal ? 'Ou bien, au sens littéral' : 'Pas de définition pour ce mot entier. Sens à déduire de ' + (allChars ? 'ses caractères' : 'ses parties')} :</div>${guess}
     <div class="parts">${e.parts.map(p => `<div class="part"><span class="zh xr" data-look="${esc(p.w)}" role="button" tabindex="0">${esc(p.w)}</span><span class="d"><b>${pinyinHTML(p.py)}</b>${xrefPop(p.d)}</span></div>`).join('')}</div>${nbHTML(e)}</div>`;
 }
 function nbHTML(e) {
@@ -3182,10 +3193,13 @@ function renderPop() {
     const cs = [...r.word], syl = main.pinyin.split(' '), fit = syl.length === cs.length;
     chars = `<div class="sec"><div class="sec-h">Caractères</div><div class="chars">${cs.map((c, i) => {
       const e = charEntry(c, fit ? syl[i] : null); if (!e) return `<div class="char"><span class="zh">${esc(c)}</span><span class="d"></span></div>`;
-      const usual = charEntry(c);
+      // its usual reading as part of words (地 dì, 为 wéi), not as a standalone particle (地 de, 为 wèi)
+      const usual = (() => { const es = (Dict.entries(c) || []).filter(x => !x.proper), r = es.length && READ_MAIN[es[0].simp]; return (r && es.find(x => x.pinyin.toLowerCase() === r)) || charEntry(c); })();
       // the character is read differently in this word than on its own (恶 wù in 厌恶, usually è)
-      const note = usual && pyKey(usual.pinyin) !== pyKey(e.pinyin) ? `<span class="rd">ici · d’habitude ${esc(pinyinText(usual.pinyin))}</span>` : '';
-      return `<div class="char"><span class="zh xr" data-look="${esc(c)}" role="button" tabindex="0">${esc(c)}</span><span class="d"><b>${pinyinHTML(e.pinyin)}</b>${note}${xrefPop(partGloss(e).slice(0, 110))}</span></div>`;
+      // only a real change of reading: not the neutral tone of 孩子 zi, 外头 tou
+      const a = pyKey(usual && usual.pinyin), b = pyKey(e.pinyin), base = x => x.replace(/\d/, '');
+      const note = usual && a !== b && (base(a) !== base(b) || (!/5$/.test(a) && !/5$/.test(b))) ? `<span class="rd">ici · d’habitude ${esc(pinyinText(usual.pinyin))}</span>` : '';
+      return `<div class="char"><span class="zh xr" data-look="${esc(c)}" role="button" tabindex="0">${esc(c)}</span><span class="d"><b>${pinyinHTML(e.pinyin)}</b>${note}${xrefPop(charGloss(c, e, 3, 2).slice(0, 150))}</span></div>`;
     }).join('')}</div></div>`;
   }
   const back = P.stack.length ? `<button class="btn small back" data-act="back" title="Revenir">‹ <span class="zh">${esc(P.stack[P.stack.length - 1].results[P.stack[P.stack.length - 1].sel].word)}</span></button>` : '';

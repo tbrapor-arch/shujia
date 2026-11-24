@@ -61,6 +61,8 @@ def pinyin_numbered(py, n, word):
             y = s[i:j]
             if y not in sylls or (y == 'r' and word[k] != '儿' and word[k] != '兒'):
                 continue
+            if y[0] in 'aeo' and i > 0 and i not in breaks:  # pinyin writes an apostrophe before a/e/o inside a word (Xī'ān)
+                continue
             rest = go(j, k + 1)
             if rest is not None:
                 return ((i, j),) + rest
@@ -98,6 +100,7 @@ def clean(g):
 
 
 PLACE = re.compile(r'\((?:a |an )?(?:town|village|township|subdistrict|residential community|community|ethnic township|county|district|city|neighbou?rhood|area|prefecture|island|station|street|road|river|lake|mountain|place)\b[^)]*\b(?:in|of|on)\b|transliteration of|a (?:metro|railway|subway) station', re.I)
+NUM = set('一二三四五六七八九十兩两幾几百千萬万半')
 lines = {}
 for L in open(src, encoding='utf8'):
     o = json.loads(L)
@@ -131,6 +134,12 @@ for L in open(src, encoding='utf8'):
             g = f"({', '.join(dict.fromkeys(labels))}) {g}"
         if g not in defs:
             defs.append(g)
+    # plain senses before slang / offensive / archaic ones
+    MARKED = re.compile(r'^\((?:[^)]*\b)?(?:slang|Internet slang|offensive|vulgar|derog\.|archaic|obsolete|dated)\b')
+    defs.sort(key=lambda d: bool(MARKED.match(d)))
+    # 五十萬 "(Internet slang, offensive) a spy": a number phrase whose only senses are slang means the literal number in a book
+    if defs and w[0] in NUM and all(re.match(r'^\([^)]*\b(?:slang|offensive|vulgar)\b', d) for d in defs):
+        continue
     if not defs or all(PLACE.search(d) for d in defs):  # small towns, villages, stations, transliterated names: many, rarely met in novels
         continue
     key = (w, simp, num)
