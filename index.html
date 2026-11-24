@@ -3226,7 +3226,7 @@ function renderPop() {
     if (e.synthetic) return synthHTML(e);
     const defs = e.defs.slice(0, 8).map(d => `<li>${defHTML(d, e)}</li>`).join('');
     const formNote = (e.simp !== main.simp || e.trad !== main.trad) ? `<span class="hzv">${esc(e.simp === e.trad ? e.simp : e.simp + '｜' + e.trad)}</span>` : '';
-    const tag = (e.proper ? '<span class="proper">nom propre</span>' : '') + (e.wikt ? '<span class="proper src" title="Mot absent de CC-CEDICT, définition du Wiktionnaire anglais">Wiktionary</span>' : '');
+    const tag = (e.proper ? '<span class="proper">nom propre</span>' : '') + (e.wikt ? '<span class="proper src" title="Mot absent de CC-CEDICT, définition du Wiktionnaire anglais">Wiktionnaire</span>' : '');
     return `<div class="ent"><div class="py">${pinyinHTML(e.pinyin)}${formNote}${tag}</div>
       <ol class="${e.defs.length === 1 ? 'one' : ''}">${defs}</ol>${e.cls.length ? `<div class="cl">Classificateur : ${e.cls.map(xref).join(', ')}</div>` : ''}</div>`;
   }).join('');
@@ -3247,7 +3247,7 @@ function renderPop() {
       return `<div class="char"><span class="zh xr" data-look="${esc(c)}" role="button" tabindex="0">${esc(c)}</span><span class="d"><b>${pinyinHTML(e.pinyin)}</b>${note}${xrefPop(charGloss(c, e, 3, 2).slice(0, 150))}</span></div>`;
     }).join('')}</div></div>`;
   }
-  const back = P.stack.length ? `<button class="btn small back" data-act="back" title="Revenir">‹ <span class="zh">${esc(P.stack[P.stack.length - 1].results[P.stack[P.stack.length - 1].sel].word)}</span></button>` : '';
+  const back = P.stack.length ? `<button class="btn small back" data-act="back" title="Revenir (⌫)">‹ <span class="zh">${esc(P.stack[P.stack.length - 1].results[P.stack[P.stack.length - 1].sel].word)}</span></button>` : '';
   const sheet = isTouch();
   pop.innerHTML = `<div class="ph">${back}<div class="grow"><span class="hw">${esc(r.word)}</span>${other ? `<span class="alt-form">${esc(other)}</span>` : ''}${idiom ? '<span class="idiom">成语</span>' : ''}</div>${ttsOK() ? '<button class="say" data-act="say" title="Écouter (S)" aria-label="Écouter">🔊</button>' : ''}
     <button class="btn small add ${isSaved ? 'saved' : 'primary'}" data-act="add">${isSaved ? '✓ Dans ta liste' : '＋ Ajouter'}</button>
@@ -3354,7 +3354,7 @@ function sayWord() {
 function askClaude() {
   if (!P.hit) return;
   const word = P.results[P.sel].word, sent = sentenceFor(P.hit, baseResult().word.length) || word;
-  const syn = P.results[P.sel].entries[0].synthetic ? ` Ce mot n'est pas dans mon dictionnaire (CC-CEDICT) : commence par sa définition (pinyin, sens, et comment ses caractères le construisent).` : '';
+  const syn = P.results[P.sel].entries[0].synthetic ? ` Ce mot est absent de mes dictionnaires : commence par sa définition (pinyin, sens, et comment ses caractères le construisent).` : '';
   openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend.${syn} Sois concis.\n\n${sent}${bookSrc()}`);
 }
 function askClaudeSel(text) {
@@ -3464,6 +3464,11 @@ document.addEventListener('keydown', e => {
   else if ((e.key === 's' || e.key === 'S') && P.hit && !e.ctrlKey && !e.metaKey) { e.preventDefault(); sayWord(); }
   else if ((e.key === 'e' || e.key === 'E') && P.hit) { e.preventDefault(); P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); setPinyin(!settings.pinyin); }
+  else if (e.key === 'Backspace' && P.hit && P.stack && P.stack.length) { e.preventDefault(); popBack(); }
+});
+// words in the pop-up that open another entry work from the keyboard too (they have role=button and tabindex)
+$('#pop').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('[data-look]')) { e.preventDefault(); e.stopPropagation(); e.target.closest('[data-look]').click(); }
 });
 addEventListener('scroll', () => { onScroll(); if (P.hit && !isTouch()) hidePop(); }, { passive: true });
 addEventListener('resize', () => onScroll());
