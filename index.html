@@ -458,6 +458,24 @@ body.reading { background: var(--rbg); }
 .pop .char .zh { font-size: 20px; }
 .pop .char .d { min-width: 0; color: var(--muted); }
 .pop .char .d b { font-weight: 600; margin-right: 4px; }
+.pop .char .rd { font-size: 11px; color: var(--seal); border: 1px solid currentColor; border-radius: 99px; padding: 0 6px; margin-right: 6px; white-space: nowrap; }
+.pop .xr { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-color: var(--muted); }
+.pop .char > .xr { text-decoration: none; }
+.pop .vref { color: var(--muted); font-size: 13.5px; margin: 1px 0 2px; padding-left: 10px; border-left: 2px solid var(--accent-soft); }
+.pop .vref::before { content: '= '; }
+.pop .syn-note { font-size: 13px; color: var(--muted); margin: 3px 0 4px; }
+.pop .guess { font-size: 14px; margin: 2px 0 6px; padding: 4px 8px; border-radius: 8px; background: var(--accent-soft); }
+.pop .guess small { display: block; font-size: 11.5px; color: var(--muted); }
+.pop .parts { display: grid; gap: 3px; }
+.pop .part { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; }
+.pop .part > .zh { font-size: 20px; text-decoration: none; white-space: nowrap; }
+.pop .part .d b { font-weight: 600; margin-right: 6px; }
+.pop .back { flex: none; margin-right: 8px; }
+.pop .nb { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.pop .nb-h { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
+.pop .nbw { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop .nbw .zh { font-size: 15px; color: var(--ink); }
+.pop .nbw b { font-weight: 600; }
 .pop .pf { display: flex; align-items: center; gap: 6px; padding: 8px 14px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .pop .pf .grow { flex: 1; }
 .pop .pf { flex-wrap: wrap; }
@@ -872,24 +890,84 @@ function cedictParts(w) {
 const MINOR_RE = /archaic|obsolete|^old variant of|^used in |radical|^see |Japanese variant|\(old\)|^\(dialect\)|^\(Cantonese\)/i;
 const pyPref = (c, e) => (typeof PY_DEFAULT !== 'undefined' && PY_DEFAULT[c] === e.pinyin) ? 1 : 0;
 // most frequent reading of polyphonic characters, weighted by how often the words using each reading occur (CC-CEDICT × jieba frequencies, computed offline)
-const READ_MAIN = {}; '丧sang4 中zhong1 为wei2 么me5 亟ji2 亲qin1 什shen2 仆pu2 仇chou2 仔zi3 令ling4 价jia4 会hui4 传chuan2 伯bo2 伽jia1 佃dian4 作zuo4 佣yong1 供gong1 侧ce4 俊jun4 倒dao3 倥kong3 假jia3 冠guan4 冲chong1 凉liang2 几ji3 凹ao1 分fen1 切qie4 划hua4 创chuang4 刨bao4 别bie2 刷shua1 刹cha4 刺ci4 削xue1 剥bo1 剿jiao3 劈pi1 劲jin4 勒le4 化hua4 匮kui4 卒zu2 占zhan4 卡ka3 参can1 叉cha1 发fa1 句ju4 叨dao1 只zhi3 叶ye4 号hao4 吁yu4 合he2 吐tu3 吓xia4 吗ma2 否fou3 吧ba1 吭keng1 吱zhi1 呀ya1 呐na4 呒m2 呗bai4 呛qiang4 呢ni2 呵he1 呶nao2 咀ju3 咋ze2 和he2 咔ka1 咧lie3 咯ge1 咳ke2 哄hong1 哇wa1 哈ha1 哑ya3 哗hua2 哦e2 哩li5 哪na3 哺bu3 哼heng1 唉ai1 唯wei2 啊a1 啦la1 喂wei4 喇la3 喷pen1 喽lou2 嗳ai3 嘎ga1 囤tun2 囱cong1 圈quan1 圜huan2 圣sheng4 地di4 场chang3 坊fang1 垛duo3 堡bao3 夫fu1 夯hang1 头tou2 夹jia1 奄yan3 奇qi2 奔ben1 好hao3 妻qi1 姥lao3 娜nuo2 娩mian3 宿su4 少shao3 尺chi3 尾wei3 尿niao4 屏ping2 属shu3 岗gang3 崭zhan3 差cha1 帖tie3 庑wu3 底di3 度du4 弄nong4 弟di4 弹dan4 强qiang2 当dang1 待dai4 怔zheng4 怼dui4 恶e4 戆gang4 扁bian3 扇shan4 扎zha1 打da3 扫sao3 扳ban1 把ba3 折zhe2 抢qiang3 抹mo3 担dan1 拉la1 拓tuo4 拚pan4 拽zhuai4 拾shi2 挑tiao3 挡dang3 捋luo1 掖ye4 掺chan1 揣chuai3 揾wen4 搁ge1 搂lou3 摸mo1 撇pie1 撒sa1 撮cuo1 操cao1 攒zan3 教jiao4 敛lian3 散san4 数shu4 斗dou4 旄mao2 旋xuan2 暴bao4 曾ceng2 服fu2 朝chao2 末mo4 术shu4 朴pu3 杈cha4 杓shao2 杠gang4 板ban3 柏bai3 柜gui4 查cha2 校xiao4 桁heng2 桡rao2 档dang4 椎zhui1 楂zha1 楞leng2 楷kai3 榜bang3 槛kan3 模mo2 横heng2 欸ai3 正zheng4 歪wai1 殷yin1 比bi3 汤tang1 沓ta4 沙sha1 没mei2 沤ou4 泡pao4 泥ni2 洇yin1 浅qian3 浆jiang1 涌yong3 涡wo1 涨zhang3 淋lin2 混hun4 渐jian4 渠qu2 湮yan1 溜liu1 溺ni4 漂piao1 濯zhuo2 瀑pu4 炮pao4 炸zha4 煞sha4 熨yun4 熬ao2 率lu:4 王wang2 玢fen1 甚shen4 甬yong3 甭beng2 症zheng4 瘅dan4 监jian1 盛sheng4 相xiang1 省sheng3 看kan4 眯mi1 着zhe5 石shi2 磕ke1 磨mo2 禅chan2 种zhong3 秤cheng4 称cheng1 稽ji1 空kong1 窨yin4 窾kuan3 答da2 粘nian2 糊hu2 糜mi2 系xi4 累lei3 絜xie2 纤xian1 约yue1 结jie2 络luo4 绰chuo4 绷beng1 综zong1 缀zhui4 缉ji1 罢ba4 翘qiao2 耙pa2 耶ye2 背bei4 胖pang4 脏zang4 脚jiao3 脯pu2 腊la4 膀bang3 膏gao1 臊sao4 臭chou4 艮gen4 色se4 艾ai4 茄qie2 草cao3 荫yin1 莘shen1 莞wan3 莩piao3 菌jun1 菲fei3 落luo4 蒙meng2 蓼liao3 蔓man4 蕃fan1 薄bo2 藏cang2 蜇zhe2 行xing2 衩cha3 衰shuai1 裨bi4 褪tui4 褶zhe3 要yao4 见jian4 观guan1 觉jue2 角jiao3 解jie3 识shi2 语yu3 说shuo1 读du2 谩man4 豁huo4 貉he2 贲ben1 赚zhuan4 足zu2 跂qi3 跄qiang4 跑pao3 蹲dun1 转zhuan3 辟pi4 边bian1 过guo4 还hai2 这zhe4 远yuan3 追zhui1 通tong1 逮dai4 那na4 都du1 酢zuo4 重zhong4 量liang4 钉ding1 钻zuan1 铛dang1 铣xi3 铤ting3 铮zheng1 锯ju4 镏liu2 镐gao3 镪qiang1 长zhang3 间jian1 闷men4 阿a1 陂bei1 陆lu4 降jiang4 隆long2 隐yin3 隽juan4 难nan2 雀que4 雨yu3 露lu4 靓liang4 靡mi3 页ye4 顷qing3 颏ke1 食shi2 饮yin3 馏liu2 驮tuo2 骑qi2 鲜xian1 鹄hu2 龈yin2 龟gui1'.split(' ').forEach(t => { READ_MAIN[t[0]] = t.slice(1); });
+const READ_MAIN = {}; '丧sang4 中zhong1 为wei2 么me5 亟ji2 亲qin1 什shen2 仆pu2 仇chou2 仔zi3 令ling4 价jia4 会hui4 传chuan2 伯bo2 伽jia1 佃dian4 作zuo4 佣yong1 供gong1 侧ce4 俊jun4 倒dao3 倥kong3 假jia3 冠guan4 冲chong1 凉liang2 几ji3 凹ao1 分fen1 切qie4 划hua4 创chuang4 刨bao4 别bie2 刷shua1 刹cha4 刺ci4 削xue1 剥bo1 剿jiao3 劈pi1 劲jin4 勒le4 化hua4 匮kui4 卒zu2 占zhan4 卡ka3 参can1 叉cha1 发fa1 句ju4 叨dao1 只zhi3 叶ye4 号hao4 吁yu4 合he2 吐tu3 吓xia4 吗ma2 否fou3 吧ba1 吭keng1 吱zhi1 呀ya1 呐na4 呒m2 呗bai4 呛qiang4 呢ni2 呵he1 呶nao2 咀ju3 咋ze2 和he2 咔ka1 咧lie3 咯ge1 咳ke2 哄hong1 哇wa1 哈ha1 哑ya3 哗hua2 哦e2 哩li5 哪na3 哺bu3 哼heng1 唉ai1 唯wei2 啊a1 啦la1 喂wei4 喇la3 喷pen1 喽lou2 嗳ai3 嘎ga1 囤tun2 囱cong1 圈quan1 圜huan2 圣sheng4 地di4 场chang3 坊fang1 垛duo3 堡bao3 夫fu1 夯hang1 头tou2 夹jia1 奄yan3 奇qi2 奔ben1 好hao3 妻qi1 姥lao3 娜nuo2 娩mian3 宿su4 少shao3 尺chi3 尾wei3 尿niao4 屏ping2 属shu3 岗gang3 崭zhan3 差cha1 帖tie3 庑wu3 底di3 度du4 弄nong4 弟di4 弹dan4 强qiang2 当dang1 待dai4 怔zheng4 怼dui4 恶e4 戆gang4 扁bian3 扇shan4 扎zha1 打da3 扫sao3 扳ban1 把ba3 折zhe2 抢qiang3 抹mo3 担dan1 拉la1 拓tuo4 拚pan4 拽zhuai4 拾shi2 挑tiao3 挡dang3 捋luo1 掖ye4 掺chan1 揣chuai3 揾wen4 搁ge1 搂lou3 摸mo1 撇pie1 撒sa1 撮cuo1 操cao1 攒zan3 教jiao4 敛lian3 散san4 数shu4 斗dou4 旄mao2 旋xuan2 暴bao4 曾ceng2 服fu2 朝chao2 末mo4 术shu4 朴pu3 杈cha4 杓shao2 杠gang4 板ban3 柏bai3 柜gui4 查cha2 校xiao4 桁heng2 桡rao2 档dang4 椎zhui1 楂zha1 楞leng2 楷kai3 榜bang3 槛kan3 模mo2 横heng2 欸ai3 正zheng4 歪wai1 殷yin1 比bi3 汤tang1 沓ta4 沙sha1 没mei2 沤ou4 泡pao4 泥ni2 洇yin1 浅qian3 浆jiang1 涌yong3 涡wo1 涨zhang3 淋lin2 混hun4 渐jian4 渠qu2 湮yan1 溜liu1 溺ni4 漂piao1 濯zhuo2 瀑pu4 炮pao4 炸zha4 煞sha4 熨yun4 熬ao2 率lu:4 王wang2 玢fen1 甚shen4 甬yong3 甭beng2 症zheng4 瘅dan4 监jian1 盛sheng4 相xiang1 省sheng3 看kan4 眯mi1 着zhe5 石shi2 磕ke1 磨mo2 禅chan2 种zhong3 秤cheng4 称cheng1 稽ji1 空kong1 窨yin4 窾kuan3 答da2 粘nian2 糊hu2 糜mi2 系xi4 累lei3 絜xie2 纤xian1 约yue1 结jie2 络luo4 绰chuo4 绷beng1 综zong1 缀zhui4 缉ji1 罢ba4 翘qiao2 耙pa2 耶ye2 背bei4 胖pang4 脏zang4 脚jiao3 脯pu2 腊la4 膀bang3 膏gao1 臊sao4 臭chou4 艮gen4 色se4 艾ai4 茄qie2 草cao3 荫yin1 莘shen1 莞wan3 莩piao3 菌jun1 菲fei3 落luo4 蒙meng2 蓼liao3 蔓man4 蕃fan1 薄bo2 藏cang2 蜇zhe2 行xing2 衩cha3 衰shuai1 裨bi4 褪tui4 褶zhe3 要yao4 见jian4 观guan1 觉jue2 角jiao3 解jie3 识shi2 语yu3 说shuo1 读du2 谩man4 豁huo4 貉he2 贲ben1 赚zhuan4 足zu2 跂qi3 跄qiang4 跑pao3 轧ya4 蹲dun1 转zhuan3 辟pi4 边bian1 过guo4 还hai2 这zhe4 远yuan3 追zhui1 通tong1 逮dai4 那na4 都du1 酢zuo4 重zhong4 量liang4 钉ding1 钻zuan1 铛dang1 铣xi3 铤ting3 铮zheng1 锯ju4 镏liu2 镐gao3 镪qiang1 长zhang3 间jian1 闷men4 阿a1 陂bei1 陆lu4 降jiang4 隆long2 隐yin3 隽juan4 难nan2 雀que4 雨yu3 露lu4 靓liang4 靡mi3 页ye4 顷qing3 颏ke1 食shi2 饮yin3 馏liu2 驮tuo2 骑qi2 鲜xian1 鹄hu2 龈yin2 龟gui1'.split(' ').forEach(t => { READ_MAIN[t[0]] = t.slice(1); });
 const WORD_PY = { 地方: 'di4 fang5', 生意: 'sheng1 yi5', 教授: 'jiao4 shou4', 所长: 'suo3 zhang3', 到了: 'dao4 le5', 都会: 'dou1 hui4', 不了: 'bu4 liao3', 起来: 'qi3 lai5' };
 const readPref = e => READ_MAIN[e.simp] === e.pinyin.toLowerCase() ? 1 : 0;
 const isMinor = e => (e.defs.length && e.defs.every(d => MINOR_RE.test(d))) ? 1 : 0;
+// cross-references: "variant of 暗淡[an4 dan4]", "see 碾壓|碾压[nian3 ya1]", "used in 惡心|恶心[e3 xin1]"… point to another entry
+const REF_RE = /^(?:(?:old |Japanese |erhua |archaic |ancient )?variant of|see(?: also)?|same as|also written|used in|abbr\. for|abbr\. of|contraction of|equivalent to)\s+([^\s\[\],;|]+)(?:\|([^\s\[\],;]+))?\[([^\]]+)\]/i;
+const isRefDef = d => REF_RE.test(d);
+const isRefOnly = e => !!e.defs.length && e.defs.every(isRefDef);
+const pyKey = p => String(p || '').toLowerCase().replace(/u:/g, 'v').replace(/\s+/g, ' ').trim();
+// the entry a cross-reference points to (same reading when possible, never another bare cross-reference unless nothing else exists)
+function refTarget(d, from, depth = 0) {
+  const m = d.match(REF_RE); if (!m) return null;
+  const w = m[2] || m[1], py = m[3]; const es = Dict.entries(w) || (m[2] ? Dict.entries(m[1]) : null); if (!es) return null;
+  const pool = es.filter(x => !x.proper && x !== from); if (!pool.length) return null;
+  const same = pool.filter(x => pyKey(x.pinyin) === pyKey(py));
+  const cands = same.length ? same : pool;
+  let t = cands.find(x => !isRefOnly(x)) || cands[0];
+  if (isRefOnly(t) && depth < 2) { const t2 = refTarget(t.defs[0], t, depth + 1); if (t2) t = t2.e; }
+  return isRefOnly(t) ? null : { w, py, e: t };
+}
+// definitions with bare cross-references filled in, for lists and saved words: "variant of 暗淡[an4 dan4] = dim; faint; dull"
+function expandDefs(e, n = 3) {
+  if (!isRefOnly(e)) return e.defs;
+  return e.defs.map(d => { const t = refTarget(d, e); return t ? `${d} = ${t.e.defs.slice(0, n).join('; ')}` : d; });
+}
+// the entry for one character inside a word: the reading the word uses (恶 wù in 厌恶, 轧 yà in 碾轧), and a real meaning rather than
+// "variant of 額" (CC-CEDICT also files rare variant shapes under the simplified form: 頟→额, 拕→拖, 㨪→晃)
+function charEntry(c, py) {
+  const es = Dict.entries(c); if (!es) return null;
+  const real = es.filter(x => !x.proper); const pool = real.length ? real : es;
+  const good = x => !isRefOnly(x) && !isMinor(x);
+  let cands = py ? pool.filter(x => pyKey(x.pinyin) === pyKey(py)) : [];
+  if (!cands.length && py) { const k = pyKey(py).replace(/\d/, ''); cands = pool.filter(x => pyKey(x.pinyin).replace(/\d/, '') === k); } // neutral tone in the word (东西 xi5)
+  if (!cands.length) cands = pool;
+  return cands.find(good) || cands.find(x => !isRefOnly(x)) || cands[0];
+}
 // a polyphonic character whose reading depends on the word it sits in, when that word isn't in CC-CEDICT (藏民 zàngmín, 藏獒…)
 const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4']];
 function partEntry(x, word) {
   const es = Dict.entries(x); if (!es) return null;
-  if (x.length === 1) for (const [c, re, py] of CTX_READ) if (x === c && re.test(word)) {
-    const hit = es.find(z => z.pinyin.toLowerCase() === py && /Tibet/.test(z.defs.join(' '))) || es.find(z => z.pinyin.toLowerCase() === py);
-    if (hit) return Object.assign({}, hit, { pinyin: py, proper: 0 });
+  if (x.length === 1) {
+    for (const [c, re, py] of CTX_READ) if (x === c && re.test(word)) {
+      const hit = es.find(z => z.pinyin.toLowerCase() === py && /Tibet/.test(z.defs.join(' '))) || es.find(z => z.pinyin.toLowerCase() === py);
+      if (hit) return Object.assign({}, hit, { pinyin: py, proper: 0 });
+    }
+    return charEntry(x);
   }
-  return es.find(z => !z.proper) || es[0];
+  return es.find(z => !z.proper && !isRefOnly(z)) || es.find(z => !z.proper) || es[0];
+}
+// what a final character usually adds to the word before it, when the whole word isn't in the dictionary (失落感, 糊状, 可读性…)
+const SUFFIX_GLOSS = { 感: 'sentiment / sensation de …', 状: 'en forme de …, qui a l’aspect de …', 性: '-ité, caractère …, nature de …', 化: '-isation, rendre / devenir …',
+  式: 'à la manière de …, de type …', 型: 'de type …, modèle …', 者: 'celui qui …, -eur', 率: 'taux de …', 度: 'degré de …', 力: 'force / capacité de …',
+  界: 'le monde de …, les milieux de …', 们: 'pluriel (personnes)', 法: 'méthode / façon de …', 量: 'quantité de …', 物: 'chose …, objet …', 品: 'produit …, article …',
+  症: 'maladie / syndrome de …', 学: 'étude de …, -logie', 论: 'théorie de …, -isme', 主义: '-isme', 似的: 'comme …, on dirait …', 般: 'comme …, à la manière de …' };
+// readable meaning of a part: its first real senses (cross-references followed)
+function partGloss(e, n = 3) {
+  const t = isRefOnly(e) ? refTarget(e.defs[0], e) : null;
+  const all = t ? t.e.defs : e.defs, defs = all.filter(d => !MINOR_RE.test(d) && !isRefDef(d));
+  return (defs.length ? defs : all).slice(0, n).join('; ');
+}
+// definitions kept with a saved word
+const senseDefs = x => (x.synthetic && x.parts ? x.parts.map(p => `${p.w} ${pinyinText(p.py)} : ${p.d}`) : expandDefs(x)).slice(0, 5);
+// a character often has several entries with the same reading (困 "to trap" and 睏→困 "sleepy"): show them all, they are all possible here
+function charGloss(c, e) {
+  const same = (Dict.entries(c) || []).filter(x => !x.proper && !isRefOnly(x) && !isMinor(x) && pyKey(x.pinyin) === pyKey(e.pinyin));
+  if (same.length < 2) return partGloss(e, 9);
+  const first = same.includes(e) ? e : same[0];
+  return [first, ...same.filter(x => x !== first)].slice(0, 3).map((x, i) => partGloss(x, i ? 2 : 9)).join(' | ');
 }
 function compoundEntry(w, nw) {
-  const parts = cedictParts(nw || w).map(x => ({ w: x, e: partEntry(x, nw || w) }));
+  const word = nw || w;
+  const parts = cedictParts(word).map(x => ({ w: x, e: partEntry(x, word) }));
   if (parts.some(p => !p.e)) return null;
-  return { trad: w, simp: nw || w, pinyin: parts.map(p => p.e.pinyin).join(' '), defs: [parts.map(p => `${p.w} : ${p.e.defs.slice(0, 2).join(', ')}`).join(' + ')], cls: [], proper: 0, synthetic: true };
+  const last = parts[parts.length - 1], head = parts.length > 1 ? parts.slice(0, -1).map(p => p.w).join('') : '';
+  const suf = head && SUFFIX_GLOSS[last.w] ? { suf: last.w, head, gloss: SUFFIX_GLOSS[last.w] } : null;
+  return { trad: w, simp: word, pinyin: parts.map(p => p.e.pinyin).join(' '), cls: [], proper: 0, synthetic: true, suf,
+    parts: parts.map(p => ({ w: p.w, py: p.e.pinyin, d: p.w.length === 1 ? charGloss(p.w, p.e) : partGloss(p.e) })),
+    defs: [parts.map(p => `${p.w} : ${partGloss(p.e, 2)}`).join(' + ')] };
 }
 // CEDICT "(idiom)" marks are reliable; jieba's idiom flag is noisy (奇怪的是, 一切正常…), so it only counts when CEDICT also knows the word
 const isIdiom = (w, es) => { const real = (es || []).filter(e => !e.synthetic); return real.some(e => e.defs.some(d => /\(idiom\b/.test(d))) || (!!real.length && !!Words.idioms && Words.idioms.has(w)); };
@@ -2255,7 +2333,7 @@ async function showStats(id, tab) {
               h('button', { class: 'btn small', onclick: () => goToPassage(id, o.k, o.s, forms) }, 'Lire ↗'))));
         } },
           h('span', { class: 'c' }, x.c),
-          h('span', { class: 'm' }, h('span', { html: e ? pinyinHTML(e.pinyin) : '' }), h('span', { class: 'd', html: e ? xref(e.defs.slice(0, 3).join('; ')) : '—' })),
+          h('span', { class: 'm' }, h('span', { html: e ? pinyinHTML(e.pinyin) : '' }), h('span', { class: 'd', html: e ? xref(expandDefs(e).slice(0, 3).join('; ')) : '—' })),
           h('span', { class: 'r' }, x.r ? (sys === 'tw' && x.r > 3100 ? 'hors liste' : '#' + fmtN(x.r)) : 'hors liste', h('br'),
             lvl === 8 ? `hors ${lvName}` : `${lvName} ${lvl === 7 && sys !== 'tw' ? '7–9' : lvl}`, h('br'), `×${x.n}`)),
         more));
@@ -3008,41 +3086,89 @@ function showHit(hit, x, y, pinned) {
       const ce = compoundEntry(hit.str.slice(0, L), nw); if (ce) { results.unshift({ word: hit.str.slice(0, L), entries: [ce] }); break; }
     }
   }
-  P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y };
+  P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y }; P.stack = [];
   renderPop();
 }
 function hidePop() {
-  P.hit = null; P.pinned = false; P.showEx = false; $('#pop').hidden = true;
+  P.hit = null; P.pinned = false; P.showEx = false; P.stack = []; $('#pop').hidden = true;
   try { CSS.highlights && CSS.highlights.delete('zh'); } catch {}
 }
 const popStale = () => P.hit && !P.hit.start.node.isConnected; // the text under the pop-up was re-rendered (pinyin on/off)
+// the word as found in the text (a cross-reference opened from the pop-up shows another word, but the text and sentence stay the same)
+const baseResult = () => (P.stack && P.stack.length) ? P.stack[0].results[P.stack[0].sel] : P.results[P.sel];
+// cross-references in a definition become tappable: they open that word in the pop-up (‹ to come back)
+const xrefPop = d => xref(d).replace(/<span class="zh">([^<]+)<\/span>/g, (_, w) => `<span class="zh xr" data-look="${w}" role="button" tabindex="0">${w}</span>`);
+function openRef(w) {
+  if (!P.hit || !Dict.ready) return;
+  const es = Dict.entries(w); if (!es) return;
+  P.stack.push({ results: P.results, sel: P.sel }); P.results = [{ word: w, entries: es, ref: true }]; P.sel = 0; P.pinned = true; P.showEx = false; renderPop();
+}
+function popBack() { const s = P.stack.pop(); if (!s) return; P.results = s.results; P.sel = s.sel; renderPop(); }
+// one definition line; a bare "variant of / see X" gets X's own meaning right under it
+function defHTML(d, e) {
+  let out = xrefPop(d);
+  if (isRefOnly(e)) { const t = refTarget(d, e); if (t) out += `<div class="vref">${t.e.defs.slice(0, 4).map(xrefPop).join('; ')}</div>`; }
+  return out;
+}
+// dictionary words that share a character in the same place (日均 → 平均 average, 人均 per capita; 扣钱 → 扣除 to deduct): often enough to guess the sense
+const NB = new Map();
+function neighbours(w) {
+  if (NB.has(w)) return NB.get(w);
+  const [a, b] = [...w], L = [], Rt = [];
+  for (const k of Dict.index.keys()) if (k.length === 2 && k !== w && (k[0] === a || k[1] === b)) {
+    const e = (Dict.entries(k) || []).find(x => !x.proper && !isRefOnly(x) && !isMinor(x) && x.simp === k); if (!e) continue;
+    (k[1] === b ? Rt : L).push({ w: k, e, f: (Words.map && Words.map.get(k)) || 0 });
+  }
+  const top = arr => arr.sort((x, y) => y.f - x.f).slice(0, 3);
+  const out = [...top(Rt), ...top(L)]; if (NB.size > 300) NB.clear(); NB.set(w, out); return out;
+}
+function synthHTML(e) {
+  const allChars = e.parts.every(p => [...p.w].length === 1);
+  const guess = e.suf ? `<div class="guess">≈ ${esc(e.suf.gloss).split('…').join(`<span class="zh">${esc(e.suf.head)}</span>`)}<small><span class="zh">…${esc(e.suf.suf)}</span> en fin de mot : ${esc(e.suf.gloss)}</small></div>` : '';
+  return `<div class="ent syn"><div class="py">${pinyinHTML(e.pinyin)}<span class="proper" title="Mot connu du découpeur (jieba) mais absent de CC-CEDICT">absent du dictionnaire</span></div>
+    <div class="syn-note">Pas de définition pour ce mot entier. Sens à déduire de ${allChars ? 'ses caractères' : 'ses parties'} :</div>${guess}
+    <div class="parts">${e.parts.map(p => `<div class="part"><span class="zh xr" data-look="${esc(p.w)}" role="button" tabindex="0">${esc(p.w)}</span><span class="d"><b>${pinyinHTML(p.py)}</b>${xrefPop(p.d)}</span></div>`).join('')}</div>${nbHTML(e)}</div>`;
+}
+function nbHTML(e) {
+  if (e.parts.length !== 2 || !e.parts.every(p => [...p.w].length === 1)) return '';
+  const nb = neighbours(e.simp); if (!nb.length) return '';
+  return `<div class="nb"><div class="nb-h">Mots proches dans le dictionnaire</div>${nb.map(x => `<div class="nbw"><span class="zh xr" data-look="${esc(x.w)}" role="button" tabindex="0">${esc(x.w)}</span> <b>${esc(pinyinText(x.e.pinyin))}</b> ${esc(x.e.defs.slice(0, 2).join('; ').slice(0, 70))}</div>`).join('')}</div>`;
+}
 function renderPop() {
   if (!P.hit || !P.results) return;
   if (popStale()) return hidePop();
+  if (!P.stack) P.stack = [];
   const pop = $('#pop'); const r = P.results[P.sel]; const main = r.entries[0];
-  const rng = hitRange(r.word.length);
+  const rng = hitRange(baseResult().word.length);
   try { if (rng && window.Highlight && CSS.highlights) CSS.highlights.set('zh', new Highlight(rng)); } catch {}
   const other = main.synthetic ? (main.simp !== r.word ? main.simp : '') : r.word === main.simp ? (main.trad !== main.simp ? main.trad : '') : main.simp;
   const idiom = isIdiom(normZh(r.word, bookIsTrad()), r.entries);
   const isSaved = R.saved.has(main.simp);
   const ents = r.entries.slice(0, 6).map(e => {
-    const defs = e.defs.slice(0, 8).map(d => `<li>${xref(d)}</li>`).join('');
+    if (e.synthetic) return synthHTML(e);
+    const defs = e.defs.slice(0, 8).map(d => `<li>${defHTML(d, e)}</li>`).join('');
     const formNote = (e.simp !== main.simp || e.trad !== main.trad) ? `<span class="hzv">${esc(e.simp === e.trad ? e.simp : e.simp + '｜' + e.trad)}</span>` : '';
-    const tag = e.synthetic ? '<span class="proper">mot composé</span>' : e.proper ? '<span class="proper">nom propre</span>' : '';
-    return `<div class="ent"><div class="py">${pinyinHTML(e.pinyin)}${e.synthetic ? '' : formNote}${tag}</div>
+    const tag = e.proper ? '<span class="proper">nom propre</span>' : '';
+    return `<div class="ent"><div class="py">${pinyinHTML(e.pinyin)}${formNote}${tag}</div>
       <ol class="${e.defs.length === 1 ? 'one' : ''}">${defs}</ol>${e.cls.length ? `<div class="cl">Classificateur : ${e.cls.map(xref).join(', ')}</div>` : ''}</div>`;
   }).join('');
   const alts = P.results.length > 1 ? `<div class="sec"><div class="sec-h">Autres découpages</div><div class="chips">${P.results.map((x, i) =>
     `<button class="chip" data-alt="${i}" aria-pressed="${i === P.sel}"><span class="zh">${esc(x.word)}</span> ${esc(pinyinText(x.entries[0].pinyin))}</button>`).join('')}</div></div>` : '';
   let chars = '';
-  if (r.word.length > 1 && r.word.length <= 6) {
-    chars = `<div class="sec"><div class="sec-h">Caractères</div><div class="chars">${[...r.word].map(c => {
-      const es = Dict.entries(c); const e = es && (es.find(x => !x.proper) || es[0]);
-      return `<div class="char"><span class="zh">${esc(c)}</span><span class="d">${e ? `<b>${pinyinHTML(e.pinyin)}</b>${esc(e.defs.slice(0, 3).join('; ').slice(0, 90))}` : ''}</span></div>`;
+  // a reconstructed word already lists its parts (each can be opened)
+  if (r.word.length > 1 && r.word.length <= 6 && !main.synthetic) {
+    const cs = [...r.word], syl = main.pinyin.split(' '), fit = syl.length === cs.length;
+    chars = `<div class="sec"><div class="sec-h">Caractères</div><div class="chars">${cs.map((c, i) => {
+      const e = charEntry(c, fit ? syl[i] : null); if (!e) return `<div class="char"><span class="zh">${esc(c)}</span><span class="d"></span></div>`;
+      const usual = charEntry(c);
+      // the character is read differently in this word than on its own (恶 wù in 厌恶, usually è)
+      const note = usual && pyKey(usual.pinyin) !== pyKey(e.pinyin) ? `<span class="rd">ici · d’habitude ${esc(pinyinText(usual.pinyin))}</span>` : '';
+      return `<div class="char"><span class="zh xr" data-look="${esc(c)}" role="button" tabindex="0">${esc(c)}</span><span class="d"><b>${pinyinHTML(e.pinyin)}</b>${note}${xrefPop(partGloss(e).slice(0, 110))}</span></div>`;
     }).join('')}</div></div>`;
   }
+  const back = P.stack.length ? `<button class="btn small back" data-act="back" title="Revenir">‹ <span class="zh">${esc(P.stack[P.stack.length - 1].results[P.stack[P.stack.length - 1].sel].word)}</span></button>` : '';
   const sheet = isTouch();
-  pop.innerHTML = `<div class="ph"><div class="grow"><span class="hw">${esc(r.word)}</span>${other ? `<span class="alt-form">${esc(other)}</span>` : ''}${idiom ? '<span class="idiom">成语</span>' : ''}</div>${ttsOK() ? '<button class="say" data-act="say" title="Écouter (S)" aria-label="Écouter">🔊</button>' : ''}
+  pop.innerHTML = `<div class="ph">${back}<div class="grow"><span class="hw">${esc(r.word)}</span>${other ? `<span class="alt-form">${esc(other)}</span>` : ''}${idiom ? '<span class="idiom">成语</span>' : ''}</div>${ttsOK() ? '<button class="say" data-act="say" title="Écouter (S)" aria-label="Écouter">🔊</button>' : ''}
     <button class="btn small add ${isSaved ? 'saved' : 'primary'}" data-act="add">${isSaved ? '✓ Dans ta liste' : '＋ Ajouter'}</button>
     ${sheet || P.pinned ? '<button class="icon-btn" data-act="close" aria-label="Fermer">✕</button>' : ''}</div>
     ${ents}${alts}${chars}
@@ -3084,8 +3210,8 @@ async function toggleSave0() {
   } else {
     const sec = P.hit.block.closest('section'); const si = sec ? +sec.dataset.i : R.cur;
     const ch = chapterOf(si);
-    const senses = r.entries.filter(x => !x.proper || r.entries.every(y => y.proper)).slice(0, 3).map(x => ({ p: x.pinyin, d: x.defs.slice(0, 5) }));
-    const v = { id: uid(), bookId: R.book.id, section: si, chapterIdx: ch.idx, chapter: ch.label, word: r.word, simp: e.simp, trad: e.trad, pinyin: e.pinyin, senses, sentence: sentenceFor(P.hit, r.word.length), addedAt: Date.now(), box: 0, due: 0 };
+    const senses = r.entries.filter(x => !x.proper || r.entries.every(y => y.proper)).slice(0, 3).map(x => ({ p: x.pinyin, d: senseDefs(x) }));
+    const v = { id: uid(), bookId: R.book.id, section: si, chapterIdx: ch.idx, chapter: ch.label, word: r.word, simp: e.simp, trad: e.trad, pinyin: e.pinyin, senses, sentence: sentenceFor(P.hit, baseResult().word.length), addedAt: Date.now(), box: 0, due: 0 };
     await DB.put('vocab', v); R.saved.add(e.simp);
     toast(`${r.word} ajouté · ${ch.label}`);
   }
@@ -3099,13 +3225,14 @@ function shiftHit(dir) {
   else { start = prevPosition(P.hit.start.node, P.hit.start.off, P.hit.block); if (!start) return; while (start && /\s/.test(start.node.data[start.off])) start = prevPosition(start.node, start.off, P.hit.block); if (!start) return; }
   if (!HAN.test(start.node.data[start.off])) return;
   const hit = collect(start.node, start.off); const res = Dict.lookup(hit.str); if (!res.length) return;
-  P.hit = hit; P.results = res; P.sel = 0; renderPop();
+  P.hit = hit; P.results = res; P.sel = 0; P.stack = []; renderPop();
 }
 $('#pop').addEventListener('click', e => {
   e.stopPropagation();
   const alt = e.target.closest('[data-alt]'); if (alt) { P.sel = +alt.dataset.alt; P.pinned = true; renderPop(); return; }
+  const look = e.target.closest('[data-look]'); if (look) { if (look.dataset.look !== P.results[P.sel].word) openRef(look.dataset.look); return; }
   const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'add') toggleSave(); else if (act === 'close') hidePop(); else if (act === 'prev') { P.pinned = true; shiftHit(-1); } else if (act === 'next') { P.pinned = true; shiftHit(1); }
+  if (act === 'add') toggleSave(); else if (act === 'back') popBack(); else if (act === 'close') hidePop(); else if (act === 'prev') { P.pinned = true; shiftHit(-1); } else if (act === 'next') { P.pinned = true; shiftHit(1); }
   else if (act === 'ex') { P.pinned = true; P.showEx = !P.showEx; renderPop(); }
   else if (act === 'ai') askClaude();
   else if (act === 'say') sayWord();
@@ -3144,8 +3271,9 @@ function sayWord() {
 }
 function askClaude() {
   if (!P.hit) return;
-  const word = P.results[P.sel].word, sent = sentenceFor(P.hit, word.length) || word;
-  openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend. Sois concis.\n\n${sent}${bookSrc()}`);
+  const word = P.results[P.sel].word, sent = sentenceFor(P.hit, baseResult().word.length) || word;
+  const syn = P.results[P.sel].entries[0].synthetic ? ` Ce mot n'est pas dans mon dictionnaire (CC-CEDICT) : commence par sa définition (pinyin, sens, et comment ses caractères le construisent).` : '';
+  openClaude(`Je lis un roman en chinois (niveau avancé). Explique-moi cette phrase en français, en insistant sur 「${word}」 : sens exact ici, nuance, registre, et ce que la phrase sous-entend.${syn} Sois concis.\n\n${sent}${bookSrc()}`);
 }
 function askClaudeSel(text) {
   const t = text.replace(/\s+/g, '').trim().slice(0, 1500);
@@ -3525,7 +3653,7 @@ async function addVocabWord(bookId, d, w, k, sent, found) {
   const e0 = we[0];
   if ((await DB.byBook(bookId)).some(v => v.simp === e0.simp)) return false;
   const ch = chapterIn(d, k);
-  await DB.put('vocab', { id: uid(), bookId, section: k, chapterIdx: ch.idx, chapter: ch.label, word: w, simp: e0.simp, trad: e0.trad, pinyin: e0.pinyin, senses: we.filter(z => !z.proper || we.every(y => y.proper)).slice(0, 3).map(z => ({ p: z.pinyin, d: z.defs.slice(0, 5) })), sentence: sent, addedAt: Date.now(), box: 0, due: 0 });
+  await DB.put('vocab', { id: uid(), bookId, section: k, chapterIdx: ch.idx, chapter: ch.label, word: w, simp: e0.simp, trad: e0.trad, pinyin: e0.pinyin, senses: we.filter(z => !z.proper || we.every(y => y.proper)).slice(0, 3).map(z => ({ p: z.pinyin, d: senseDefs(z) })), sentence: sent, addedAt: Date.now(), box: 0, due: 0 });
   if (R.book && R.book.id === bookId) { R.saved.add(e0.simp); updateVocabCount(); }
   toast(`${w} ajouté · ${ch.label}`);
   return true;
@@ -3567,7 +3695,7 @@ async function showPrep(i) {
       return h('div', { class: 'prep-row' },
         h('div', { onclick: () => { sentEl.hidden = !sentEl.hidden; } },
           h('span', { class: 'w' }, x.w),
-          h('span', { class: 'i' }, h('span', { html: pinyinHTML(e.pinyin) }), h('span', { class: 'd', html: xref(e.defs.slice(0, 3).join('; ')) })),
+          h('span', { class: 'i' }, h('span', { html: pinyinHTML(e.pinyin) }), h('span', { class: 'd', html: xref(expandDefs(e).slice(0, 3).join('; ')) })),
           h('span', { class: 'a' }, x.n > 1 ? '×' + x.n : '', add)),
         sentEl);
     };
@@ -3575,14 +3703,14 @@ async function showPrep(i) {
     seg.hidden = onIdioms; listEl.hidden = onIdioms; idiomEl.hidden = !onIdioms;
     if (onIdioms) info.textContent = idioms.length ? `${idioms.length} 成语 dans ce chapitre, les plus rares d'abord. Touche-en un pour sa phrase.` : 'Aucun 成语 repéré dans ce chapitre.';
     const charRow = o => {
-      const es = Dict.entries(o.c) || [], e = es.find(z => !z.proper) || es[0];
+      const es = Dict.entries(o.c) || [], e = charEntry(o.c) || es[0];
       o.words.sort((p, q) => q.n - p.n);
       const sub = h('div', { class: 'prep-sub', hidden: true }, ...o.words.map(rowOf));
       const wl = o.words.slice(0, 4).map(x => x.w === o.c ? null : esc(x.w).replace(o.c, `<b>${o.c}</b>`)).filter(Boolean);
       return h('div', { class: 'prep-row' },
         h('div', { onclick: () => { sub.hidden = !sub.hidden; } },
           h('span', { class: 'w' }, o.c),
-          h('span', { class: 'i' }, e ? h('span', { html: pinyinHTML(e.pinyin) }) : '', h('span', { class: 'd', html: e ? xref(e.defs.slice(0, 3).join('; ')) : '' }),
+          h('span', { class: 'i' }, e ? h('span', { html: pinyinHTML(e.pinyin) }) : '', h('span', { class: 'd', html: e ? xref(expandDefs(e).slice(0, 3).join('; ')) : '' }),
             wl.length ? h('span', { class: 'ws', html: wl.join('　') + (o.words.length > 4 ? ' …' : '') }) : ''),
           h('span', { class: 'a' }, '×' + o.n)),
         sub);
