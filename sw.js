@@ -1,5 +1,5 @@
 // 书架 service worker: the app works offline once opened
-const V = 'shujia-17950032';
+const V = 'shujia-17950033';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 // libraries and data never change under the same address: they live in a cache kept across updates, filled at install so the app opens books offline
 const STATIC = 'shujia-static-1';
@@ -21,7 +21,7 @@ self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const u = new URL(req.url);
   if (u.origin === location.origin) {
-    if (/\/data\/(cedict|words)\.txt$/.test(u.pathname)) return; // the app keeps these in its own database
+    if (/\/data\/(cedict|words|wikt)\.txt$/.test(u.pathname)) return; // the app keeps these in its own database
     if (u.pathname.includes('/data/') || u.pathname.includes('/lib/')) { e.respondWith(cacheFirst(req)); return; }
     // the app page: network first (updates show at once), cache when offline or slow
     e.respondWith(caches.open(V).then(async c => {

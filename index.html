@@ -628,7 +628,7 @@ body.reading { background: var(--rbg); }
     <span>Formats : EPUB, MOBI, AZW3 et autres formats Kindle sans protection, TXT (UTF-8, GB18030, Big5 détectés automatiquement), PDF avec texte, FB2, DOCX et HTML. Une transcription de podcast (.json) va dans l'onglet Podcasts, pas dans la bibliothèque.</span>
     <span id="storage-note">Tes livres et ton vocabulaire sont enregistrés dans ce navigateur, et sur ton Google Drive si la synchronisation est activée.</span>
     <span>Fréquences : liste de Jun Da (Modern Chinese Character Frequency List, MTSU) ; niveaux : HSK 3.0 (2021).</span>
-    <span>Dictionnaire : <a href="https://cc-cedict.org/wiki/" target="_blank" rel="noopener">CC-CEDICT</a> (MDBG, licence CC BY-SA 4.0), version du 26 septembre 2026.</span>
+    <span>Dictionnaire : <a href="https://cc-cedict.org/wiki/" target="_blank" rel="noopener">CC-CEDICT</a> (MDBG, licence CC BY-SA 4.0), version du 26 septembre 2026, complété par les mots chinois du <a href="https://en.wiktionary.org/" target="_blank" rel="noopener">Wiktionnaire anglais</a> (via <a href="https://kaikki.org/" target="_blank" rel="noopener">kaikki.org</a>, licence CC BY-SA 4.0), version du 1er octobre 2026.</span>
   </div>
 </div>
 
@@ -783,21 +783,27 @@ const DB = (() => {
 /* ================= dictionary ================= */
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
-const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1; // change these when data/cedict.txt or data/words.txt change
+const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
 const Dict = {
-  ready: false, lines: null, index: null, maxLen: 0, loading: null,
+  ready: false, lines: null, index: null, maxLen: 0, loading: null, wStart: Infinity,
   load() {
     if (this.loading) return this.loading;
     this.loading = (async () => {
-      let text = null;
-      try { const c = await DB.get('kv', 'dict'); if (c && c.v === DICT_VERSION) text = c.text; } catch {}
-      if (!text) {
+      const cedict = (async () => {
+        try { const c = await DB.get('kv', 'dict'); if (c && c.v === DICT_VERSION) return c.text; } catch {}
         const res = await fetch('data/cedict.txt');
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        text = await res.text();
-        DB.put('kv', { k: 'dict', v: DICT_VERSION, text }).catch(() => {});
-      }
-      const lines = text.split('\n'), index = new Map(); let maxLen = 0;
+        const t = await res.text(); DB.put('kv', { k: 'dict', v: DICT_VERSION, text: t }).catch(() => {}); return t;
+      })();
+      // words CC-CEDICT lacks, from Wiktionary: optional (the reader works without it if it can't be fetched)
+      const wikt = (async () => {
+        try { const c = await DB.get('kv', 'dictw'); if (c && c.v === WIKT_VERSION) return c.text; } catch {}
+        try { const res = await fetch('data/wikt.txt'); if (!res.ok) return ''; const t = await res.text(); DB.put('kv', { k: 'dictw', v: WIKT_VERSION, text: t }).catch(() => {}); return t; } catch { return ''; }
+      })();
+      const [text, wtext] = await Promise.all([cedict, wikt]);
+      let lines = text.split('\n'); const wStart = lines.length;
+      if (wtext) lines = lines.concat(wtext.split('\n'));
+      const index = new Map(); let maxLen = 0;
       const add = (k, i) => { const e = index.get(k); if (e === undefined) index.set(k, i); else if (typeof e === 'number') index.set(k, [e, i]); else e.push(i); if (k.length > maxLen) maxLen = k.length; };
       for (let i = 0; i < lines.length; i++) {
         if (i && !(i & 8191)) await breathe(); // keep the page responsive on phones while the index is built
@@ -806,7 +812,7 @@ const Dict = {
         const t = L.slice(0, a), s = L.slice(a + 1, b);
         add(t, i); if (s !== t) add(s, i);
       }
-      Object.assign(this, { lines, index, maxLen: Math.min(maxLen, 12), ready: true });
+      Object.assign(this, { lines, index, wStart, maxLen: Math.min(maxLen, 12), ready: true });
     })().catch(e => { this.loading = null; throw e; }); // offline on first visit: try again next time
     return this.loading;
   },
@@ -819,7 +825,7 @@ const Dict = {
   entries0(w) {
     let e = this.index.get(w); if (e === undefined) return null;
     if (typeof e === 'number') e = [e];
-    const out = e.map(i => parseEntry(this.lines[i]));
+    const out = e.map(i => { const x = parseEntry(this.lines[i]); if (i >= this.wStart) x.wikt = 1; return x; });
     if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (pyPref(w, y) - pyPref(w, x)) || (isMinor(x) - isMinor(y)) || (readPref(y) - readPref(x)) || (rankOf(x.simp) - rankOf(y.simp))); }
     // words with several readings (便宜, 东西, 结果, 妻子…): the usual one has more senses or the neutral tone
     const sc = e => (WORD_PY[w] === e.pinyin ? 100 : 0) + e.defs.length + (/5/.test(e.pinyin) ? 0.5 : 0) - (isMinor(e) ? 50 : 0);
@@ -3079,10 +3085,18 @@ function showHit(hit, x, y, pinned) {
   ensureFreq();
   const results = Dict.lookup(hit.str);
   if (!results.length) { hidePop(); return; }
+  // a rare Wiktionary-only word must not take over a tap on a common word (一外 "first foreign language" in 一外国人)
+  if (Words.ready && results.length > 1 && results[0].entries.every(e => e.wikt) && !Words.map.has(normZh(results[0].word, bookIsTrad()))) {
+    const seg = segment(normZh(hit.str, bookIsTrad())), n = seg.length ? seg[0][1] : 0;
+    const i = results.findIndex(x => x.word.length === n);
+    if (i > 0) results.unshift(...results.splice(i, 1));
+  }
   if (Words.ready) {
     const ns = normZh(hit.str, bookIsTrad());
     for (let L = Math.min(8, ns.length); L > results[0].word.length; L--) {
-      const nw = ns.slice(0, L); if (!Words.map.has(nw) || Dict.entries(nw)) continue;
+      const nw = ns.slice(0, L); if (!Words.map.has(nw)) continue;
+      // the dictionary knows the word only in its usual form (迴身 in the text, 回身 in the dictionary)
+      const known = Dict.entries(nw); if (known) { results.unshift({ word: hit.str.slice(0, L), entries: known }); break; }
       const ce = compoundEntry(hit.str.slice(0, L), nw); if (ce) { results.unshift({ word: hit.str.slice(0, L), entries: [ce] }); break; }
     }
   }
@@ -3097,7 +3111,15 @@ const popStale = () => P.hit && !P.hit.start.node.isConnected; // the text under
 // the word as found in the text (a cross-reference opened from the pop-up shows another word, but the text and sentence stay the same)
 const baseResult = () => (P.stack && P.stack.length) ? P.stack[0].results[P.stack[0].sel] : P.results[P.sel];
 // cross-references in a definition become tappable: they open that word in the pop-up (‹ to come back)
-const xrefPop = d => xref(d).replace(/<span class="zh">([^<]+)<\/span>/g, (_, w) => `<span class="zh xr" data-look="${w}" role="button" tabindex="0">${w}</span>`);
+const xrWrap = w => `<span class="zh xr" data-look="${w}" role="button" tabindex="0">${w}</span>`;
+const xrefPop = d => {
+  let inSpan = false;
+  return xref(d).replace(/<span class="zh">([^<]+)<\/span>/g, (_, w) => xrWrap(w)).split(/(<[^>]+>)/).map(t => {
+    if (t[0] === '<') { inSpan = t.startsWith('<span') ? true : t === '</span>' ? false : inSpan; return t; }
+    // bare Chinese words in a definition ("synonym of 靡靡之音 (mǐmǐzhīyīn)") open too, when the dictionary knows them
+    return inSpan ? t : t.replace(/[\u3400-\u9FFF]{1,12}/g, w => Dict.ready && Dict.entries(w) ? xrWrap(w) : w);
+  }).join('');
+};
 function openRef(w) {
   if (!P.hit || !Dict.ready) return;
   const es = Dict.entries(w); if (!es) return;
@@ -3148,7 +3170,7 @@ function renderPop() {
     if (e.synthetic) return synthHTML(e);
     const defs = e.defs.slice(0, 8).map(d => `<li>${defHTML(d, e)}</li>`).join('');
     const formNote = (e.simp !== main.simp || e.trad !== main.trad) ? `<span class="hzv">${esc(e.simp === e.trad ? e.simp : e.simp + '｜' + e.trad)}</span>` : '';
-    const tag = e.proper ? '<span class="proper">nom propre</span>' : '';
+    const tag = (e.proper ? '<span class="proper">nom propre</span>' : '') + (e.wikt ? '<span class="proper src" title="Mot absent de CC-CEDICT, définition du Wiktionnaire anglais">Wiktionary</span>' : '');
     return `<div class="ent"><div class="py">${pinyinHTML(e.pinyin)}${formNote}${tag}</div>
       <ol class="${e.defs.length === 1 ? 'one' : ''}">${defs}</ol>${e.cls.length ? `<div class="cl">Classificateur : ${e.cls.map(xref).join(', ')}</div>` : ''}</div>`;
   }).join('');
