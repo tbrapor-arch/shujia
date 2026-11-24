@@ -784,23 +784,23 @@ const DB = (() => {
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
 const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01c'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
+// a data file kept in the database: fetched again when its version changes, the old copy used while the fetch fails (offline
+// right after an update); ?v= so no HTTP cache serves the previous file (the service worker leaves these to the network)
+async function dataText(k, v, url, optional) {
+  let old = null;
+  try { const c = await DB.get('kv', k); if (c && c.v === v) return c.text; old = c && c.text; } catch {}
+  try {
+    const res = await fetch(`${url}?v=${encodeURIComponent(v)}`); if (!res.ok) throw new Error('HTTP ' + res.status);
+    const t = await res.text(); DB.put('kv', { k, v, text: t }).catch(() => {}); return t;
+  } catch (e) { if (old) return old; if (optional) return ''; throw e; }
+}
 const Dict = {
   ready: false, lines: null, index: null, maxLen: 0, loading: null, wStart: Infinity,
   load() {
     if (this.loading) return this.loading;
     this.loading = (async () => {
-      const cedict = (async () => {
-        try { const c = await DB.get('kv', 'dict'); if (c && c.v === DICT_VERSION) return c.text; } catch {}
-        const res = await fetch('data/cedict.txt');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const t = await res.text(); DB.put('kv', { k: 'dict', v: DICT_VERSION, text: t }).catch(() => {}); return t;
-      })();
       // words CC-CEDICT lacks, from Wiktionary: optional (the reader works without it if it can't be fetched)
-      const wikt = (async () => {
-        try { const c = await DB.get('kv', 'dictw'); if (c && c.v === WIKT_VERSION) return c.text; } catch {}
-        try { const res = await fetch('data/wikt.txt'); if (!res.ok) return ''; const t = await res.text(); DB.put('kv', { k: 'dictw', v: WIKT_VERSION, text: t }).catch(() => {}); return t; } catch { return ''; }
-      })();
-      const [text, wtext] = await Promise.all([cedict, wikt]);
+      const [text, wtext] = await Promise.all([dataText('dict', DICT_VERSION, 'data/cedict.txt'), dataText('dictw', WIKT_VERSION, 'data/wikt.txt', true)]);
       let lines = text.split('\n'); const wStart = lines.length;
       if (wtext) lines = lines.concat(wtext.split('\n'));
       const index = new Map(); let maxLen = 0;
@@ -846,9 +846,7 @@ const Words = {
   load() {
     if (this.loading) return this.loading;
     this.loading = (async () => {
-      let text = null;
-      try { const c = await DB.get('kv', 'words'); if (c && c.v === WORDS_VERSION) text = c.text; } catch {}
-      if (!text) { const res = await fetch('data/words.txt'); if (!res.ok) throw new Error('HTTP ' + res.status); text = await res.text(); DB.put('kv', { k: 'words', v: WORDS_VERSION, text }).catch(() => {}); }
+      let text = await dataText('words', WORDS_VERSION, 'data/words.txt');
       const map = new Map(), idioms = new Set(); let total = 0;
       const lines = text.split('\n'); text = null;
       for (let i = 0; i < lines.length; i++) {
