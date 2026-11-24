@@ -783,7 +783,7 @@ const DB = (() => {
 /* ================= dictionary ================= */
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
-const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01c'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
+const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01d'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
 // a data file kept in the database: fetched again when its version changes, the old copy used while the fetch fails (offline
 // right after an update); ?v= so no HTTP cache serves the previous file (the service worker leaves these to the network)
 async function dataText(k, v, url, optional) {
