@@ -3,21 +3,26 @@
 
 Input: Chinese entries of a wiktextract dump (kaikki.org raw data, CC BY-SA), one JSON object per line,
 reduced to word / senses / sounds / forms. Usage:
-    python3 tools/build_wikt.py zh.jsonl data/cedict.txt data/wikt.txt
+    python3 tools/build_wikt.py zh.jsonl data/cedict.txt data/wikt.txt [redirects.tsv]
 Only words of 2+ Han characters with a Mandarin pinyin reading are kept; senses that belong to other
 Chinese languages (Cantonese, Hokkien, Wu, Hakka…) are dropped, since the reader is for Mandarin texts.
 """
 import json, re, sys, unicodedata
 
 src, cedict_path, out_path = sys.argv[1:4]
+redir_path = sys.argv[4] if len(sys.argv) > 4 else None  # word<TAB>target|target… (Wiktionary soft redirects: 甚麼 → 什麼)
 
 HAN = re.compile(r'^[㐀-䶿一-鿿\U00020000-\U0003FFFF〇]+$')
 ced, sylls = set(), set()
+ced_entry = {}  # key -> (trad, simp, pinyin) of its first entry
 for L in open(cedict_path, encoding='utf8'):
     if L.startswith('#') or not L.strip():
         continue
     t, s, p = L.split('\t')[:3]
     ced.add(t); ced.add(s)
+    for k in (t, s):  # first entry, but a common word before a name (小說家 xiǎoshuōjiā, not the classical school)
+        if k not in ced_entry or (ced_entry[k][2][:1].isupper() and not p[:1].isupper()):
+            ced_entry[k] = (t, s, p)
     for y in p.split():
         y = y.lower().rstrip('12345').replace('u:', 'v')
         if y.isalpha():
@@ -99,7 +104,7 @@ def clean(g):
     return g[:160] + ('…' if len(g) > 160 else '')
 
 
-PLACE = re.compile(r'\((?:a |an )?(?:town|village|township|subdistrict|residential community|community|ethnic township|county|district|city|neighbou?rhood|area|prefecture|island|station|street|road|river|lake|mountain|place)\b[^)]*\b(?:in|of|on)\b|transliteration of|a (?:metro|railway|subway) station', re.I)
+PLACE = re.compile(r'\((?:a |an )?(?:town|village|township|ward|commune|subdistrict|residential community|community|ethnic township|county|district|city|neighbou?rhood|area|prefecture|island|station|street|road|river|lake|mountain|place)\b[^)]*\b(?:in|of|on)\b|transliteration of|a (?:metro|railway|subway) station', re.I)
 NUM = set('一二三四五六七八九十兩两幾几百千萬万半')
 lines = {}
 for L in open(src, encoding='utf8'):
@@ -148,8 +153,37 @@ for L in open(src, encoding='utf8'):
         if d not in cur and len(cur) < 8:
             cur.append(d)
 
+# spellings Wiktionary only redirects (甚麼 → 什麼, 迴身 → 回身): a "variant of" line pointing to the entry, which the app follows
+variants = {}
+if redir_path:
+    known = dict(ced_entry)
+    for (t, s, p) in lines:
+        known.setdefault(t, (t, s, p)); known.setdefault(s, (t, s, p))
+    red = {}
+    for L in open(redir_path, encoding='utf8'):
+        w, _, tg = L.rstrip('\n').partition('\t')
+        red[w] = tg.split('|')
+    for w, tgs in red.items():
+        if len(w) < 2 or not HAN.match(w) or w in known:
+            continue
+        hit, todo, seen = None, list(tgs), set()
+        while todo and not hit and len(seen) < 6:
+            x = todo.pop(0)
+            if x in seen:
+                continue
+            seen.add(x)
+            if x in known and len(x) == len(w):
+                hit = known[x]
+            else:
+                todo += red.get(x, [])
+        if hit:
+            t, s, p = hit
+            variants[w] = (p, f"variant of {t if t == s else t + '|' + s}[{p}]")
+
 with open(out_path, 'w', encoding='utf8') as f:
     f.write('# Chinese words from English Wiktionary (wiktextract / kaikki.org), CC BY-SA 4.0, missing from CC-CEDICT. Built by tools/build_wikt.py\n')
     for (t, s, p), defs in sorted(lines.items(), key=lambda kv: kv[0][1]):
         f.write(f"{t}\t{s}\t{p}\t{'/'.join(defs)}\n")
-print(len(lines), 'entries')
+    for w, (p, d) in sorted(variants.items()):
+        f.write(f"{w}\t{w}\t{p}\t{d}\n")
+print(len(lines), 'entries,', len(variants), 'variant spellings')

@@ -783,7 +783,7 @@ const DB = (() => {
 /* ================= dictionary ================= */
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
-const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
+const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01c'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
 const Dict = {
   ready: false, lines: null, index: null, maxLen: 0, loading: null, wStart: Infinity,
   load() {
@@ -952,7 +952,27 @@ function partEntry(x, word) {
 const SUFFIX_GLOSS = { 感: 'sentiment / sensation de …', 状: 'en forme de …, qui a l’aspect de …', 性: '-ité, caractère …, nature de …', 化: '-isation, rendre / devenir …',
   式: 'à la manière de …, de type …', 型: 'de type …, modèle …', 者: 'celui qui …, -eur', 率: 'taux de …', 度: 'degré de …', 力: 'force / capacité de …',
   界: 'le monde de …, les milieux de …', 们: 'pluriel (personnes)', 法: 'méthode / façon de …', 量: 'quantité de …', 物: 'chose …, objet …', 品: 'produit …, article …',
-  症: 'maladie / syndrome de …', 学: 'étude de …, -logie', 论: 'théorie de …, -isme', 主义: '-isme', 似的: 'comme …, on dirait …', 般: 'comme …, à la manière de …' };
+  症: 'maladie / syndrome de …', 学: 'étude de …, -logie', 论: 'théorie de …, -isme', 主义: '-isme', 似的: 'comme …, on dirait …', 般: 'comme …, à la manière de …',
+  // grammar more than vocabulary (看着, 坐在, 脸上, 店里…): the commonest "absent" words in novels
+  着: '… (en train de, aspect continu)', 在: '… à / dans (un lieu)', 上: 'sur …', 里: 'dans …', 中: 'dans …, au milieu de …', 下: 'sous …',
+  过: 'avoir déjà …', 到: '… jusqu’à, arriver à …', 来: '… (vers ici)', 去: '… (vers là-bas)', 完: 'finir de …', 起: 'se mettre à …, … (vers le haut)' };
+const NUM_FR = { 一: 'un(e)', 二: 'deux', 两: 'deux', 三: 'trois', 四: 'quatre', 五: 'cinq', 六: 'six', 七: 'sept', 八: 'huit', 九: 'neuf', 十: 'dix',
+  几: 'quelques', 半: 'un demi', 每: 'chaque', 这: 'ce …-ci', 那: 'ce …-là', 哪: 'quel …' };
+// a likely meaning from the shape of the word: 点点头 (verb doubled), 笑了笑, 两个 (number + measure word), 看着 (suffix)
+// 「…」 marks Chinese inside the text
+function guessFor(word, parts) {
+  const c = [...word];
+  if (c.length === 3 && c[0] === c[1] && Dict.entries(c[1] + c[2])) return { g: `≈ 「${c[1] + c[2]}」, verbe redoublé : le faire un peu, brièvement`, rule: 'AAB : verbe-objet redoublé (点点头, 摇摇头)', parts: [c[0], c[1] + c[2]] };
+  if (c.length === 3 && c[0] === c[2] && (c[1] === '了' || c[1] === '一')) return { g: `≈ 「${c[0]}」 un peu, brièvement${c[1] === '了' ? ' (c’est fait)' : ''}`, rule: `A${c[1]}A : verbe redoublé (笑了笑, 看一看)`, parts: [c[0], c[1]] };
+  if (c.length === 2 && NUM_FR[c[0]]) {
+    const cl = (Dict.entries(c[1]) || []).some(e => e.defs.some(d => /classifier/i.test(d)));
+    const fr = NUM_FR[c[0]].includes('…') ? NUM_FR[c[0]] : NUM_FR[c[0]] + ' …';
+    return cl ? { g: `≈ ${fr.replace('…', '(+ nom)')}`, rule: `「${c[1]}」 est ici un classificateur (mot de mesure)` } : { g: `≈ ${fr.replace('…', `「${c[1]}」`)}`, rule: 'nombre ou démonstratif + nom' };
+  }
+  const last = parts[parts.length - 1], head = parts.slice(0, -1).join('');
+  if (head && SUFFIX_GLOSS[last]) return { g: '≈ ' + SUFFIX_GLOSS[last].split('…').join(`「${head}」`), rule: `…「${last}」 en fin de mot : ${SUFFIX_GLOSS[last]}` };
+  return null;
+}
 // readable meaning of a part: its first real senses (cross-references followed)
 function partGloss(e, n = 3) {
   const t = isRefOnly(e) ? refTarget(e.defs[0], e) : null;
@@ -971,11 +991,12 @@ function charGloss(c, e, n1 = 9, n2 = 2) {
 }
 function compoundEntry(w, nw) {
   const word = nw || w;
-  const parts = cedictParts(word).map(x => ({ w: x, e: partEntry(x, word) }));
+  let names = cedictParts(word); const guess = guessFor(word, names); if (guess && guess.parts) names = guess.parts;
+  const parts = names.map(x => ({ w: x, e: partEntry(x, word) }));
   if (parts.some(p => !p.e)) return null;
-  const last = parts[parts.length - 1], head = parts.length > 1 ? parts.slice(0, -1).map(p => p.w).join('') : '';
-  const suf = head && SUFFIX_GLOSS[last.w] ? { suf: last.w, head, gloss: SUFFIX_GLOSS[last.w] } : null;
-  return { trad: w, simp: word, pinyin: parts.map(p => p.e.pinyin).join(' '), cls: [], proper: 0, synthetic: true, suf,
+  // pinyin of the whole word, syllable by syllable (点点头: the doubled 点 is not a separate part)
+  const py = [...word].length === names.join('').length ? parts.map(p => p.e.pinyin).join(' ') : [...word].map(ch => { const e = partEntry(ch, word); return e ? e.pinyin : ''; }).join(' ');
+  return { trad: w, simp: word, pinyin: py, cls: [], proper: 0, synthetic: true, guess,
     parts: parts.map(p => ({ w: p.w, py: p.e.pinyin, d: p.w.length === 1 ? charGloss(p.w, p.e) : partGloss(p.e) })),
     defs: [parts.map(p => `${p.w} : ${partGloss(p.e, 2)}`).join(' + ')] };
 }
@@ -3109,7 +3130,10 @@ function showHit(hit, x, y, pinned) {
   const r0 = results[0];
   if (r0.word.length > 1 && r0.entries.every(e => e.wikt) && (r0.entries.every(e => e.proper) || (r0.word.length === 2 && /^[一二三四五六七八九十两兩几幾半每]/.test(r0.word)))) {
     const ce = compoundEntry(results[0].word, normZh(results[0].word, bookIsTrad()));
-    if (ce) results[0] = { word: results[0].word, entries: [...results[0].entries, Object.assign(ce, { literal: true })] };
+    Object.assign(ce || {}, { literal: true });
+    // a common word (那条 "that one", not the Vietnamese ward "Lái Thiêu") reads literally first
+    const common = wfreq(normZh(r0.word, bookIsTrad())) >= 300;
+    if (ce) results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] };
   }
   P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y }; P.stack = [];
   renderPop();
@@ -3157,9 +3181,10 @@ function neighbours(w) {
 }
 function synthHTML(e) {
   const allChars = e.parts.every(p => [...p.w].length === 1);
-  const guess = e.suf ? `<div class="guess">≈ ${esc(e.suf.gloss).split('…').join(`<span class="zh">${esc(e.suf.head)}</span>`)}<small><span class="zh">…${esc(e.suf.suf)}</span> en fin de mot : ${esc(e.suf.gloss)}</small></div>` : '';
+  const zh = t => esc(t).replace(/「([^」]+)」/g, (_, w) => xrWrap(w));
+  const guess = e.guess ? `<div class="guess">${zh(e.guess.g)}<small>${zh(e.guess.rule)}</small></div>` : '';
   return `<div class="ent syn"><div class="py">${pinyinHTML(e.pinyin)}${e.literal ? '' : '<span class="proper" title="Mot connu du découpeur (jieba) mais absent des dictionnaires">absent du dictionnaire</span>'}</div>
-    <div class="syn-note">${e.literal ? 'Ou bien, au sens littéral' : 'Pas de définition pour ce mot entier. Sens à déduire de ' + (allChars ? 'ses caractères' : 'ses parties')} :</div>${guess}
+    <div class="syn-note">${e.literal ? 'Au sens littéral' : 'Pas de définition pour ce mot entier. Sens à déduire de ' + (allChars ? 'ses caractères' : 'ses parties')} :</div>${guess}
     <div class="parts">${e.parts.map(p => `<div class="part"><span class="zh xr" data-look="${esc(p.w)}" role="button" tabindex="0">${esc(p.w)}</span><span class="d"><b>${pinyinHTML(p.py)}</b>${xrefPop(p.d)}</span></div>`).join('')}</div>${nbHTML(e)}</div>`;
 }
 function nbHTML(e) {
@@ -3198,7 +3223,7 @@ function renderPop() {
       // the character is read differently in this word than on its own (恶 wù in 厌恶, usually è)
       // only a real change of reading: not the neutral tone of 孩子 zi, 外头 tou
       const a = pyKey(usual && usual.pinyin), b = pyKey(e.pinyin), base = x => x.replace(/\d/, '');
-      const note = usual && a !== b && (base(a) !== base(b) || (!/5$/.test(a) && !/5$/.test(b))) ? `<span class="rd">ici · d’habitude ${esc(pinyinText(usual.pinyin))}</span>` : '';
+      const note = usual && a !== b && b !== 'r5' && (base(a) !== base(b) || (!/5$/.test(a) && !/5$/.test(b))) ? `<span class="rd">ici · d’habitude ${esc(pinyinText(usual.pinyin))}</span>` : '';
       return `<div class="char"><span class="zh xr" data-look="${esc(c)}" role="button" tabindex="0">${esc(c)}</span><span class="d"><b>${pinyinHTML(e.pinyin)}</b>${note}${xrefPop(charGloss(c, e, 3, 2).slice(0, 150))}</span></div>`;
     }).join('')}</div></div>`;
   }

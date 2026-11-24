@@ -17,7 +17,7 @@ async () => {
       let kind;
       if (es && es.every(e => e.wikt)) kind = 'wikt';
       else if (es) kind = 'cedict';
-      else if (Words.map.has(nw) && compoundEntry(orig, nw)) kind = 'synth';
+      else if (Words.map.has(nw) && compoundEntry(orig, nw)) { kind = 'synth'; if (compoundEntry(orig, nw).guess) stats.synthGuess = (stats.synthGuess || 0) + 1; }
       else kind = 'none';
       stats[kind]++; bump(types[kind], orig);
       if (!es) continue;
