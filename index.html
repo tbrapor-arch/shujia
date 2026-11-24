@@ -828,7 +828,7 @@ const Dict = {
     const out = e.map(i => { const x = parseEntry(this.lines[i]); if (i >= this.wStart) x.wikt = 1; return x; });
     if (w.length === 1) { ensureFreq(); return out.sort((x, y) => (x.proper - y.proper) || (pyPref(w, y) - pyPref(w, x)) || (isMinor(x) - isMinor(y)) || (readPref(y) - readPref(x)) || (rankOf(x.simp) - rankOf(y.simp))); }
     // words with several readings (便宜, 东西, 结果, 妻子…): the usual one has more senses or the neutral tone
-    const sc = e => (WORD_PY[w] === e.pinyin ? 100 : 0) + e.defs.length + (/5/.test(e.pinyin) ? 0.5 : 0) - (isMinor(e) ? 50 : 0);
+    const sc = e => ((WORD_PY[w] || WORD_PY[e.simp]) === e.pinyin ? 100 : 0) + e.defs.length + (/5/.test(e.pinyin) ? 0.5 : 0) - (isMinor(e) ? 50 : 0);
     return out.sort((x, y) => (x.proper - y.proper) || (sc(y) - sc(x)));
   },
   lookup(str) {
@@ -883,12 +883,23 @@ function segment(ns) {
   }
   const out = []; for (let i = 0; i < n; i = nxt[i]) out.push([i, nxt[i]]); return out;
 }
-// split a word with no dictionary entry into dictionary words (longest match)
+// a part of a word: a CC-CEDICT word, or a Wiktionary word the segmenter knows that is neither a name nor a bare variant spelling
+// (not 保和 "Bohol" in 保和殿, 的事 → 代誌 in 干的事, 强强 jiāng in 强强联合; 几十 in 几十年 is fine)
+const goodPart = x => x.length === 1 || (Dict.entries(x) || []).some(e => !e.wikt || (Words.map && Words.map.has(x) && !e.proper && !isRefOnly(e)));
+// split a word with no dictionary entry into dictionary words: the fewest parts, then the segmenter's most probable split
+// (一 + 分钟, not 一分 "a few" + 钟; 金 + 元宝, not 金元 "US dollar" + 宝); never the whole word itself (一本 has a Wiktionary
+// entry, its literal parts are 一 + 本)
 function cedictParts(w) {
-  const parts = []; let i = 0;
-  // (never the whole word itself: 一本 has a Wiktionary entry, its literal parts are 一 + 本)
-  while (i < w.length) { let L = Math.min(Dict.maxLen, w.length - i, i ? Infinity : w.length - 1); for (; L > 1; L--) if (Dict.entries(w.slice(i, i + L))) break; parts.push(w.slice(i, i + L)); i += L; }
-  return parts;
+  const n = w.length, np = new Int32Array(n + 1), lp = new Float64Array(n + 1), nxt = new Int32Array(n), lt = Words.logTotal || 18;
+  for (let i = n - 1; i >= 0; i--) {
+    np[i] = 1e9; nxt[i] = i + 1;
+    for (let L = 1; L <= Math.min(Dict.maxLen, n - i); L++) {
+      const x = w.slice(i, i + L); if (L === n || (L > 1 && !goodPart(x))) continue;
+      const p = 1 + np[i + L], l = Math.log((Words.map && Words.map.get(x)) || (L > 1 ? 3 : 1)) - lt + lp[i + L];
+      if (p < np[i] || (p === np[i] && l > lp[i])) { np[i] = p; lp[i] = l; nxt[i] = i + L; }
+    }
+  }
+  const parts = []; for (let i = 0; i < n; i = nxt[i]) parts.push(w.slice(i, nxt[i])); return parts;
 }
 // synthetic entry for a word known to jieba but missing from CC-CEDICT (用人单位 = 用人 + 单位)
 // readings CC-CEDICT lists that are rare in modern text: archaic senses, radicals, "used in X" (听 yǐn, 厂 hǎn, 假 gēi…)
@@ -934,7 +945,8 @@ function charEntry(c, py) {
   return cands.find(good) || cands.find(x => !isRefOnly(x)) || cands[0];
 }
 // a polyphonic character whose reading depends on the word it sits in, when that word isn't in CC-CEDICT (藏民 zàngmín, 藏獒…)
-const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4']];
+// (只 after a number is the measure word zhī: 两只手, 三只猫)
+const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4'], ['只', /[一二两三四五六七八九十百千几半每这那哪]只/, 'zhi1']];
 function partEntry(x, word) {
   const es = Dict.entries(x); if (!es) return null;
   if (x.length === 1) {
@@ -944,7 +956,7 @@ function partEntry(x, word) {
     }
     return charEntry(x);
   }
-  return es.find(z => !z.proper && !isRefOnly(z)) || es.find(z => !z.proper) || es[0];
+  return es.find(z => !z.proper && !isRefOnly(z) && !z.wikt) || es.find(z => !z.proper && !isRefOnly(z)) || es.find(z => !z.proper) || es[0];
 }
 // what a final character usually adds to the word before it, when the whole word isn't in the dictionary (失落感, 糊状, 可读性…)
 const SUFFIX_GLOSS = { 感: 'sentiment / sensation de …', 状: 'en forme de …, qui a l’aspect de …', 性: '-ité, caractère …, nature de …', 化: '-isation, rendre / devenir …',
@@ -3106,8 +3118,17 @@ function showHit(hit, x, y, pinned) {
   if (pinned && settings.podDictPause && PA.host === 'reader' && PA.want) paPause();
   if (!Dict.ready) { ensureDict(); if (pinned) toast('Le dictionnaire se charge, réessaie dans un instant.'); return; }
   ensureFreq();
+  const results = hitResults(hit);
+  if (!results) { hidePop(); return; }
+  P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y }; P.stack = [];
+  renderPop();
+}
+// senses Wiktionary marks as old or regional: in a modern novel the word is more likely meant literally (开出 "(literary) to release")
+const OLD_SENSE_RE = /^\([^)]*\b(?:literary|archaic|obsolete|dated|Classical Chinese|dialect|SW Mandarin)\b[^)]*\)/;
+// the words the pop-up offers for a tap (also after ‹ ›): dictionary matches from that character, reordered and completed
+function hitResults(hit) {
   const results = Dict.lookup(hit.str);
-  if (!results.length) { hidePop(); return; }
+  if (!results.length) return null;
   // a rare Wiktionary-only word must not take over a tap on a common word (一外 "first foreign language" in 一外国人)
   if (Words.ready && results.length > 1 && results[0].entries.every(e => e.wikt) && !Words.map.has(normZh(results[0].word, bookIsTrad()))) {
     const seg = segment(normZh(hit.str, bookIsTrad())), n = seg.length ? seg[0][1] : 0;
@@ -3123,18 +3144,19 @@ function showHit(hit, x, y, pinned) {
       const ce = compoundEntry(hit.str.slice(0, L), nw); if (ce) { results.unshift({ word: hit.str.slice(0, L), entries: [ce] }); break; }
     }
   }
-  // a Wiktionary word known only as a name, or a number + measure word with only idiomatic senses: give its literal sense too
-  // (城南 "Seongnam" — or "south of the town"; 一本 "having the same origin" — or "one volume")
-  const r0 = results[0];
-  if (r0.word.length > 1 && r0.entries.every(e => e.wikt) && (r0.entries.every(e => e.proper) || (r0.word.length === 2 && /^[一二三四五六七八九十两兩几幾半每]/.test(r0.word)))) {
-    const ce = compoundEntry(results[0].word, normZh(results[0].word, bookIsTrad()));
-    Object.assign(ce || {}, { literal: true });
-    // a common word (那条 "that one", not the Vietnamese ward "Lái Thiêu") reads literally first
-    const common = wfreq(normZh(r0.word, bookIsTrad())) >= 300;
-    if (ce) results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] };
+  // a Wiktionary word known only as a name, a number + measure word with only idiomatic senses, or a two-character word with
+  // only literary / archaic / dialect senses: give its literal sense too (城南 "Seongnam" — or "south of the town"; 一本 "having
+  // the same origin" — or "one volume"; 开出 "(literary) to release" — or "to drive out"; 他家 "(dialect) he" — or "his home")
+  const r0 = results[0], nw0 = normZh(r0.word, bookIsTrad());
+  // a common word (那条 "that one", not the Vietnamese ward "Lái Thiêu") reads literally first
+  const common = wfreq(nw0) >= 300, two = r0.word.length === 2;
+  const old = e => e.defs.some(d => OLD_SENSE_RE.test(d)), allOld = e => e.defs.length && e.defs.every(d => OLD_SENSE_RE.test(d));
+  if (r0.word.length > 1 && r0.entries.every(e => e.wikt) && !r0.entries.some(e => e.synthetic) && (r0.entries.every(e => e.proper) || (two && /^[一二三四五六七八九十两兩几幾半每]/.test(r0.word))
+      || (two && r0.entries.every(allOld)) || (two && common && r0.entries.some(old)))) {
+    const ce = compoundEntry(r0.word, nw0);
+    if (ce) { ce.literal = true; results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] }; }
   }
-  P.hit = hit; P.results = results; P.sel = 0; P.pinned = pinned; P.anchor = { x, y }; P.stack = [];
-  renderPop();
+  return results;
 }
 function hidePop() {
   P.hit = null; P.pinned = false; P.showEx = false; P.stack = []; $('#pop').hidden = true;
@@ -3270,7 +3292,8 @@ async function toggleSave0() {
     const sec = P.hit.block.closest('section'); const si = sec ? +sec.dataset.i : R.cur;
     const ch = chapterOf(si);
     const senses = r.entries.filter(x => !x.proper || r.entries.every(y => y.proper)).slice(0, 3).map(x => ({ p: x.pinyin, d: senseDefs(x) }));
-    const v = { id: uid(), bookId: R.book.id, section: si, chapterIdx: ch.idx, chapter: ch.label, word: r.word, simp: e.simp, trad: e.trad, pinyin: e.pinyin, senses, sentence: sentenceFor(P.hit, baseResult().word.length), addedAt: Date.now(), box: 0, due: 0 };
+    // the reading of the senses kept (说脏话: the literal shuō zānghuà, not the milk brand's reading listed first)
+    const v = { id: uid(), bookId: R.book.id, section: si, chapterIdx: ch.idx, chapter: ch.label, word: r.word, simp: e.simp, trad: e.trad, pinyin: senses.length ? senses[0].p : e.pinyin, senses, sentence: sentenceFor(P.hit, baseResult().word.length), addedAt: Date.now(), box: 0, due: 0 };
     await DB.put('vocab', v); R.saved.add(e.simp);
     toast(`${r.word} ajouté · ${ch.label}`);
   }
@@ -3283,7 +3306,7 @@ function shiftHit(dir) {
   if (dir > 0) { const p = P.hit.pos[1]; if (!p) return; start = { node: p[0], off: p[1] }; }
   else { start = prevPosition(P.hit.start.node, P.hit.start.off, P.hit.block); if (!start) return; while (start && /\s/.test(start.node.data[start.off])) start = prevPosition(start.node, start.off, P.hit.block); if (!start) return; }
   if (!HAN.test(start.node.data[start.off])) return;
-  const hit = collect(start.node, start.off); const res = Dict.lookup(hit.str); if (!res.length) return;
+  const hit = collect(start.node, start.off); const res = hitResults(hit); if (!res) return;
   P.hit = hit; P.results = res; P.sel = 0; P.stack = []; renderPop();
 }
 $('#pop').addEventListener('click', e => {
@@ -3460,7 +3483,9 @@ function pickPinyin(w, es) {
 }
 function pinyinForWord(w, nw) {
   const es = Dict.entries(w) || Dict.entries(nw);
-  if (es) { const p = pickPinyin(w, es); if (p) return p; }
+  // a common word Wiktionary knows only as a name reads like its parts (城南 chéng nán, 山上 shān shàng), as in the pop-up
+  const nameOnly = es && w.length > 1 && es.every(e => e.wikt && e.proper) && wfreq(nw) >= 300;
+  if (es && !nameOnly) { const p = pickPinyin(w, es); if (p) return p; }
   if (w.length === 1) return [null];
   const out = []; let i = 0;
   for (const part of cedictParts(nw)) {
@@ -4512,7 +4537,7 @@ function fillPopExamples() {
   const key = r.word + '|' + (R.book && R.book.id);
   if (P.exKey === key && P.exNodes) { box.replaceChildren(...P.exNodes); return; }
   P.exKey = key; P.exNodes = null;
-  showExamples(box, r.word, [r.word, e.simp, e.trad], sentenceFor(P.hit, r.word.length), R.book && R.book.id)
+  showExamples(box, r.word, [r.word, e.simp, e.trad], sentenceFor(P.hit, baseResult().word.length), R.book && R.book.id)
     .then(() => { if (P.exKey === key && P.hit) { P.exNodes = [...box.childNodes]; renderPop(); } });
 }
 
