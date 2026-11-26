@@ -3156,7 +3156,23 @@ function hitResults(hit) {
     const ce = compoundEntry(r0.word, nw0);
     if (ce) { ce.literal = true; results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] }; }
   }
+  // a standalone 得 read děi or dé under the ruby comes first here too (你得把她… "must"), and « Ajouter » saves that reading
+  const solo = Words.ready && results.find(x => x.word.length === 1 && SOLO_READ[normZh(x.word, bookIsTrad())]), py = solo && hitSoloRead(hit);
+  if (py) { const es = solo.entries, i = es.findIndex(e => syllable(e.pinyin).text.toLowerCase() === py); if (i > 0) solo.entries = [es[i], ...es.slice(0, i), ...es.slice(i + 1)]; } // a copy: Dict.entries is shared
   return results;
+}
+// the reading of the tapped character as the ruby shows it (toneless text, děi): in pīn mode its own <rt>; otherwise what annotate() would
+// write, from the same run of Han characters (one text node: annotate() never segments across markup) and the same soloCut edges
+function hitSoloRead(hit) {
+  const [node, off] = hit.pos[0], rb = node.parentElement && node.parentElement.closest('ruby[data-py]');
+  if (rb) { const rt = rb.querySelector('rt'); return rt ? rt.textContent : null; }
+  const tw = textWalker(hit.block); let full = '', abs = -1, n;
+  while ((n = tw.nextNode())) { if (n === node) abs = full.length + off; full += n.data; }
+  if (abs < 0) return null;
+  const d = node.data; let a = off, b = off + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
+  const ns = normZh(d.slice(a, b), bookIsTrad()), segs = segment(ns), k = segs.findIndex(s => s[0] === off - a);
+  const py = k < 0 ? null : soloRead(ns, segs, k, soloCut(full, abs - off + a, abs - off + b, !!hit.block.closest('.lrow')));
+  return py && syllable(py).text.toLowerCase();
 }
 function hidePop() {
   P.hit = null; P.pinned = false; P.showEx = false; P.stack = []; $('#pop').hidden = true;
@@ -3501,11 +3517,67 @@ function pinyinForWord(w, nw) {
   }
   return out;
 }
+// a polyphonic character standing alone as a word, read from the words around it: rule(previous, next, the one before previous, the one after next),
+// '' at a clause boundary (end of the run of Han characters); null = the usual reading of PY_DEFAULT. No part-of-speech tags at
+// runtime, so only clear cases. Keys are simplified (the run goes through normZh first).
+// 得: děi "must" after a subject or an adverb, or opening the clause, with something after it (你得把她扔了, 还得等, 那得看, 得赶紧走);
+// dé "to get" there when 了 / 过 / 的 or an object follow (他得了第一, 我得过奖, 我得的病, 这还得了), and as a clause of its own
+// (得，就这样 / 得嘞); after anything else, a verb or an adjective, it stays the complement de (跑得快, 气得把杯子摔了, 吓得她直哭):
+// a wrong děi there is worse than a missed one. A noun subject is only recognised in a few safe shapes (我妈得上班, 老王得去, 这事得慢慢来).
+const DEI_SUBJ = new Set(('我 你 他 她 它 您 咱 俺 谁 我们 你们 他们 她们 它们 咱们 俺们 我俩 你俩 他俩 咱俩 大家 人家 自己 别人 有人 咱家 ' +
+  '妈 爸 妈妈 爸爸 哥 姐 哥哥 姐姐 弟弟 妹妹 爷爷 奶奶 姥姥 姥爷 孩子 儿子 女儿 闺女 老婆 老公 媳妇 老师 大夫 医生 警察 ' +
+  '就 也 都 还 又 才 可 先 再 那 这 那就 也就 还是 就是 可是 但是 但 不过 所以 那么 要不 要么 不然 否则 于是 因此 而且 然后 接着 最后 首先 ' +
+  '现在 一定 必须 至少 起码 最少 当然 肯定 估计 恐怕 怕是 也许 可能 大概 早晚 迟早 总归 终归 反正 横竖 照样 多少 早就 ' +
+  '今天 明天 今晚 晚上 今年 去年 昨天 前天 刚 刚才 后来 当时 回头 以后 将来 待会 待会儿 一会儿 下次 下回 这回 这次 到时候 到时 这下').split(' '));
+// after 这 / 那, a few nouns that are never verbs (这事得慢慢来, 这钱得还; not 这整得我…, 那唱得叫一个好)
+const DEI_THIS = new Set('事 事儿 事情 人 病 钱'.split(' '));
+const SURNAMES = '王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗郑梁谢宋唐许韩冯邓曹彭曾萧田董袁潘蒋蔡杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范贾夏韦方邹孟熊秦邱尹薛闫段雷侯史陶贺顾毛郝龚邵覃武戴孔';
+const DE_OBJ = new Set('癌症 绝症 感冒 肺炎 冠军 金牌 银牌 铜牌 大奖 满分 头奖 过奖 第一 第二 第三 第一名 第二名 第三名'.split(' '));
+// a subject or an adverb before 得, or nothing (得 opens the clause)
+const deiBefore = (p, pp) => !p || DEI_SUBJ.has(p) || (p.length === 2 && '老小'.includes(p[0]) && SURNAMES.includes(p[1])) // 老王, 小张
+  || (p.length === 1 && (pp === '老' || pp === '小') && SURNAMES.includes(p) && !'戴顾'.includes(p)) || ((pp === '这' || pp === '那') && DEI_THIS.has(p)) // 小/李 split by the segmenter (not 老 "always" + verb: 帽子老戴得歪歪扭扭)
+  || (/^(俩|仨|几个)$/.test(p) && /^[我你他她咱俺]们?$/.test(pp)); // 我们/俩, 你们/几个
+// after nothing or after a word that is also a verb (钱还得差不多了 huán, 他估计得没错), a degree word starts the complement de
+const DEI_VERBISH = new Set('还 估计 肯定 回头 接着'.split(' '));
+const DEI_COMP = /^(很|太|挺|非常|特别|越来越|这么|那么)|^(多|好|真|这样|那样|不行|要命|要死|厉害|慌|够呛|可以|不错|差不多|极了|没错|对|不对|准|及时|早|晚|快|慢|快点|满|飞快)$/; // 挺快 is one word
+// a run of Han characters ends at punctuation or at the paragraph's edges: the rules read '' there. A run cut by markup, a line break, a dash
+// or an ellipsis (他气<b>得</b>把…, 跑——得——飞快, a podcast sentence 得说不出话来 in its own <span>) reads SOLO_CUT: unknown, the usual reading
+const SOLO_CUT = '?', SOLO_GLUE = /[\s—–―…⋯·～~]/;
+// [cut before, cut after] for the run full[a, b); open: the text's own edges are cuts too (a « Lignes » row is one sentence of the transcript)
+function soloCut(full, a, b, open) {
+  let i = a - 1, j = b; while (i >= 0 && SOLO_GLUE.test(full[i])) i--; while (j < full.length && SOLO_GLUE.test(full[j])) j++;
+  return [i < 0 ? open : HAN.test(full[i]), j >= full.length ? open : HAN.test(full[j])];
+}
+const SOLO_READ = {
+  得: (p, n, pp, nn) => {
+    if (p === SOLO_CUT || n === SOLO_CUT) return null;
+    if (!p && !n) return 'de2'; // 得，就这样吧 "all right"
+    if (!deiBefore(p, pp)) return null;
+    // 他得过病, 得过两次奖: dé; 我得过一会儿再走, 你得过安检: děi
+    if (n === '过') return !nn || DE_OBJ.has(nn) || /^[一两三四五六七八九十几]+[次回]$|^[病奖]$/.test(nn) ? 'de2' : null;
+    if (n === '了' && p === '还' && pp !== '这' && pp !== '那') return null; // 这么多钱你还得了吗 huán de liǎo; 这还得了 dé
+    if (n === '了' || n === '的' || DE_OBJ.has(n) || (!p && /^[嘞咧啦啊呀吧嘛哦喽]$/.test(n))) return 'de2';
+    // 得不 / 得两分: dé, děi or de, no telling without more (你得不到, 你得一个人去, 再得两分); 你得不断努力 is děi
+    if (!n || (n[0] === '不' && !/^不(断|停|时)$/.test(n)) || /^[两三四五六七八九十几半百千万\d]|^一[个点分次些块]/.test(n) || ((!p || DEI_VERBISH.has(p)) && DEI_COMP.test(n))
+      || (DEI_VERBISH.has(p) && n.length === 4)) return null; // 钱还得一干二净, 交代得清清楚楚
+    return 'dei3';
+  }
+};
+// reading of segment k of ns by its neighbours, when it is a single character with rules (callers check SOLO_READ first: free for other words)
+function soloRead(ns, segs, k, cut) {
+  const w = j => j < 0 ? (cut && cut[0] ? SOLO_CUT : '') : j >= segs.length ? (cut && cut[1] ? SOLO_CUT : '') : ns.slice(segs[j][0], segs[j][1]), f = SOLO_READ[w(k)];
+  return f && segs[k][1] - segs[k][0] === 1 ? f(w(k - 1), w(k + 1), w(k - 2), w(k + 2)) : null;
+}
+// pinyin of segment k (ruby and « Lignes » alike)
+const segPinyin = (run, ns, segs, k, cut) => { const [a, b] = segs[k], s = b - a === 1 && SOLO_READ[ns[a]] && soloRead(ns, segs, k, cut); return s ? [s] : pinyinForWord(run.slice(a, b), ns.slice(a, b)); };
 function annotate(sec) {
   if (sec.dataset.py) return; sec.dataset.py = '1';
   const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('rt,rp,ruby,.prep') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
   const nodes = []; let n; while ((n = tw.nextNode())) if (HAN.test(n.data)) nodes.push(n);
   const isTrad = bookIsTrad();
+  // the block's whole text: what comes before and after each text node's runs (soloCut: 他气<b>得</b>把… is not 得 opening a clause)
+  const open = !!sec.closest('.lrow'), at = new Map(); let full = '';
+  if (Words.ready) { const tw2 = textWalker(sec); while ((n = tw2.nextNode())) { at.set(n, full.length); full += n.data; } }
   for (const node of nodes) {
     const d = node.data, frag = document.createDocumentFragment(); let i = 0, buf = '';
     const plan = new Map(); // start -> [len, pinyin[]]
@@ -3513,7 +3585,8 @@ function annotate(sec) {
       const re = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3007]+/g; let m;
       while ((m = re.exec(d))) {
         const run = m[0], ns = normZh(run, isTrad);
-        for (const [a, b] of segment(ns)) { const nw = ns.slice(a, b); plan.set(m.index + a, [b - a, pinyinForWord(run.slice(a, b), nw), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); }
+        const segs = segment(ns), o = at.get(node) + m.index, cut = soloCut(full, o, o + run.length, open);
+        segs.forEach(([a, b], k) => { const nw = ns.slice(a, b); plan.set(m.index + a, [b - a, segPinyin(run, ns, segs, k, cut), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); });
       }
     }
     while (i < d.length) {
@@ -4369,8 +4442,8 @@ const PY_PUN = { '，': [',', 'c'], '。': ['.', 'c'], '！': ['!', 'c'], '？':
   ',': [',', 'c'], '.': ['.', 'c'], '!': ['!', 'c'], '?': ['?', 'c'], ';': [';', 'c'], ':': [':', 'c'], '”': ['”', 'c'], '’': ['’', 'c'], '」': ['”', 'c'], '』': ['’', 'c'], '）': [')', 'c'], ')': [')', 'c'], '》': ['»', 'c'], '】': [']', 'c'], '〉': ['›', 'c'],
   '“': ['“', 'o'], '‘': ['‘', 'o'], '「': ['“', 'o'], '『': ['‘', 'o'], '（': ['(', 'o'], '(': ['(', 'o'], '《': ['«', 'o'], '【': ['[', 'o'], '〈': ['‹', 'o'],
   '·': ['·', 'j'], '•': ['·', 'j'], '-': ['-', 'j'], '—': ['—', 'd'], '–': ['–', 'd'] };
-function pyWord(w, nw) {
-  const ps = pinyinForWord(w, nw) || [];
+function pyWord(w, nw, ps0) {
+  const ps = ps0 || pinyinForWord(w, nw) || [];
   if (ps.length !== w.length) return ps.filter(Boolean).map((p, k) => (k && /^[aeo]/i.test(p) ? "'" : '') + syllable(p).text).join('') || w;
   let out = '';
   for (let k = 0; k < w.length; k++) {
@@ -4385,7 +4458,7 @@ function pyLine(text) {
   while ((m = re.exec(text))) {
     other(text.slice(last, m.index)); last = m.index + m[0].length;
     const run = m[0], ns = normZh(run, isTrad);
-    if (Words.ready) for (const [a, b] of segment(ns)) toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b)), k: 'w' });
+    if (Words.ready) { const segs = segment(ns), cut = soloCut(text, m.index, m.index + run.length, true); segs.forEach(([a, b], k) => toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b), segPinyin(run, ns, segs, k, cut)), k: 'w' })); }
     else for (let i = 0; i < run.length;) { // no word list: longest dictionary match
       let L = 1; for (let n = Math.min(Dict.maxLen, run.length - i); n > 1; n--) if (Dict.entries(ns.slice(i, i + n))) { L = n; break; }
       toks.push({ t: pyWord(run.slice(i, i + L), ns.slice(i, i + L)), k: 'w' }); i += L;
