@@ -11,7 +11,7 @@ Ce dépôt ne contient que l'application. Tes livres et ton vocabulaire restent 
 Données incluses :
 - CC-CEDICT (MDBG), licence CC BY-SA 4.0 : data/cedict.txt
 - Mots chinois du Wiktionnaire anglais absents de CC-CEDICT (extraction wiktextract / kaikki.org, licence CC BY-SA 4.0) : data/wikt.txt, construit par tools/build_wikt.py ; seuls les mots de 2 caractères ou plus lus en mandarin sont gardés, sans les petits toponymes
-- Dictionnaire de jieba (MIT) : data/words.txt
+- Dictionnaire de jieba (MIT) : data/words.txt, construit par tools/build_words.py (mots, fréquences et classe grammaticale, qui sert à lire 得)
 - pdf.js et ses CMaps (Apache 2.0) : data/cmaps.json, lib/pdf.worker.min.js
 - foliate-js (MIT) pour MOBI/AZW3/FB2 et fflate (MIT) : lib/mobi.js, lib/fb2.js, lib/fflate.js
 - Liste de fréquence de Jun Da (MTSU), listes HSK 3.0 et liste de caractères du 國家教育研究院 (Taïwan), intégrées à index.html

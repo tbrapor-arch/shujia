@@ -783,7 +783,7 @@ const DB = (() => {
 /* ================= dictionary ================= */
 // give the browser a moment to paint and handle taps during long loops
 const breathe = () => new Promise(r => (window.scheduler && scheduler.yield) ? scheduler.yield().then(r) : setTimeout(r, 0));
-const DICT_VERSION = '2026-09-26', WORDS_VERSION = 1, WIKT_VERSION = '2026-10-01d'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
+const DICT_VERSION = '2026-09-26', WORDS_VERSION = 2, WIKT_VERSION = '2026-10-01d'; // change these when data/cedict.txt, data/words.txt or data/wikt.txt change
 // a data file kept in the database: fetched again when its version changes, the old copy used while the fetch fails (offline
 // right after an update); ?v= so no HTTP cache serves the previous file (the service worker leaves these to the network)
 async function dataText(k, v, url, optional) {
@@ -791,7 +791,8 @@ async function dataText(k, v, url, optional) {
   try { const c = await DB.get('kv', k); if (c && c.v === v) return c.text; old = c && c.text; } catch {}
   try {
     const res = await fetch(`${url}?v=${encodeURIComponent(v)}`); if (!res.ok) throw new Error('HTTP ' + res.status);
-    const t = await res.text(); DB.put('kv', { k, v, text: t }).catch(() => {}); return t;
+    const t = await res.text(); if (t[0] !== '#') throw new Error('not a data file'); // a Wi-Fi login page answers 200 with HTML: never keep it as the dictionary (all three files open with a # line)
+    DB.put('kv', { k, v, text: t }).catch(() => {}); return t;
   } catch (e) { if (old) return old; if (optional) return ''; throw e; }
 }
 const Dict = {
@@ -840,23 +841,30 @@ const Dict = {
     return out;
   }
 };
-/* word list (jieba, simplified, with frequencies) for segmentation and idioms */
+/* word list (jieba, simplified, with frequencies and word classes) for segmentation, idioms and the 得 rules */
+// map: word -> frequency × 16 + class (index in WCLS: one number per word, no second map); pos: the file has classes (WORDS_VERSION 2;
+// a phone still on version 1 offline keeps its old copy for a while: only i letters, so cls() answers '' and the rules stay lexical)
+const WCLS = 'nivazdrtmpx';
 const Words = {
-  ready: false, map: null, idioms: null, logTotal: 0, loading: null,
+  ready: false, map: null, idioms: null, logTotal: 0, loading: null, pos: false,
+  f(w) { return (this.map && this.map.get(w)) >> 4; },
+  // word class: n noun or name, v verb, a adjective, z state word, d adverb, r pronoun, t time, m number, p preposition, i idiom, x other;
+  // '' for a word the list lacks, or no classes in the data
+  cls(w) { const v = this.pos && this.map.get(w); return v ? WCLS[v & 15] : ''; },
   load() {
     if (this.loading) return this.loading;
     this.loading = (async () => {
       let text = await dataText('words', WORDS_VERSION, 'data/words.txt');
-      const map = new Map(), idioms = new Set(); let total = 0;
+      const map = new Map(), idioms = new Set(); let total = 0, pos = false;
       const lines = text.split('\n'); text = null;
       for (let i = 0; i < lines.length; i++) {
         if (i && !(i & 16383)) await breathe();
         const L = lines[i]; if (!L || L.charCodeAt(0) === 35) continue;
         const a = L.indexOf(' '), b = L.indexOf(' ', a + 1);
-        const w = L.slice(0, a), f = +(b < 0 ? L.slice(a + 1) : L.slice(a + 1, b));
-        map.set(w, f); total += f; if (b > 0) idioms.add(w);
+        const w = L.slice(0, a), f = +(b < 0 ? L.slice(a + 1) : L.slice(a + 1, b)), c = b < 0 ? 0 : WCLS.indexOf(L[b + 1]);
+        map.set(w, f * 16 + (c > 0 ? c : 0)); total += f; if (c === 1) idioms.add(w); else if (c > 1) pos = true;
       }
-      Object.assign(this, { map, idioms, logTotal: Math.log(total), ready: true });
+      Object.assign(this, { map, idioms, pos, logTotal: Math.log(total), ready: true });
     })().catch(e => { this.loading = null; throw e; });
     return this.loading;
   }
@@ -868,7 +876,7 @@ function normZh(str, isTrad) {
   for (let i = 0; i < str.length; i++) { const c = str[i]; const t = FREQ.t2s.get(c); out += t ? bestOf(t) : (VARIANTS[c] || c); }
   return out;
 }
-const wfreq = w => { const f = Words.map && Words.map.get(w); if (f) return f; if (Dict.index && Dict.index.has(w)) return w.length === 1 ? 20 : 3; return 0; };
+const wfreq = w => { const f = Words.f(w); if (f) return f; if (Dict.index && Dict.index.has(w)) return w.length === 1 ? 20 : 3; return 0; };
 // most probable segmentation (jieba-style dynamic programming); returns [start, end] pairs
 function segment(ns) {
   const n = ns.length, best = new Float64Array(n + 1), nxt = new Int32Array(n);
@@ -895,7 +903,7 @@ function cedictParts(w) {
     np[i] = 1e9; nxt[i] = i + 1;
     for (let L = 1; L <= Math.min(Dict.maxLen, n - i); L++) {
       const x = w.slice(i, i + L); if (L === n || (L > 1 && !goodPart(x))) continue;
-      const p = 1 + np[i + L], l = Math.log((Words.map && Words.map.get(x)) || (L > 1 ? 3 : 1)) - lt + lp[i + L];
+      const p = 1 + np[i + L], l = Math.log(Words.f(x) || (L > 1 ? 3 : 1)) - lt + lp[i + L];
       if (p < np[i] || (p === np[i] && l > lp[i])) { np[i] = p; lp[i] = l; nxt[i] = i + L; }
     }
   }
@@ -3156,23 +3164,27 @@ function hitResults(hit) {
     const ce = compoundEntry(r0.word, nw0);
     if (ce) { ce.literal = true; results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] }; }
   }
-  // a standalone 得 read děi or dé under the ruby comes first here too (你得把她… "must"), and « Ajouter » saves that reading
-  const solo = Words.ready && results.find(x => x.word.length === 1 && SOLO_READ[normZh(x.word, bookIsTrad())]), py = solo && hitSoloRead(hit);
+  // the ruby's word comes first when soloSegs split it off a longer one (你得来: 得 "must", not 得来; 他乐得合不拢嘴: 乐, not 乐得 "only too glad to"),
+  // and a standalone 得 read děi or dé under the ruby comes first here too (你得把她… "must"), and « Ajouter » saves that reading
+  const sr = Words.ready ? hitSoloRead(hit) : null;
+  if (sr && sr.len) { const i = results.findIndex(x => x.word.length === sr.len); if (i > 0) results.unshift(...results.splice(i, 1)); }
+  const solo = sr && sr.py && results.find(x => x.word.length === 1 && SOLO_READ[normZh(x.word, bookIsTrad())]), py = solo && sr.py;
   if (py) { const es = solo.entries, i = es.findIndex(e => syllable(e.pinyin).text.toLowerCase() === py); if (i > 0) solo.entries = [es[i], ...es.slice(0, i), ...es.slice(i + 1)]; } // a copy: Dict.entries is shared
   return results;
 }
-// the reading of the tapped character as the ruby shows it (toneless text, děi): in pīn mode its own <rt>; otherwise what annotate() would
-// write, from the same run of Han characters (one text node: annotate() never segments across markup) and the same soloCut edges
+// the ruby's word at the tapped character, as annotate() makes it (one run of Han characters, one text node, the same soloCut edges; once
+// annotated, each character sits in its own <ruby>: the run is read from the block's text): len = its length when soloSegs split it off
+// a longer word (你得来: 1), else 0; py = the reading of a standalone 得 (toneless text, děi), in pīn mode its own <rt>
 function hitSoloRead(hit) {
   const [node, off] = hit.pos[0], rb = node.parentElement && node.parentElement.closest('ruby[data-py]');
-  if (rb) { const rt = rb.querySelector('rt'); return rt ? rt.textContent : null; }
   const tw = textWalker(hit.block); let full = '', abs = -1, n;
   while ((n = tw.nextNode())) { if (n === node) abs = full.length + off; full += n.data; }
   if (abs < 0) return null;
-  const d = node.data; let a = off, b = off + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
-  const ns = normZh(d.slice(a, b), bookIsTrad()), segs = segment(ns), k = segs.findIndex(s => s[0] === off - a);
-  const py = k < 0 ? null : soloRead(ns, segs, k, soloCut(full, abs - off + a, abs - off + b, !!hit.block.closest('.lrow')));
-  return py && syllable(py).text.toLowerCase();
+  const d = rb ? full : node.data, o = rb ? abs : off, base = abs - o; let a = o, b = o + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
+  const ns = normZh(d.slice(a, b), bookIsTrad()), cut = soloCut(full, base + a, base + b, rowCut(hit.block)), segs = soloSegs(ns, cut), k = segs.findIndex(s => s[0] === o - a);
+  const rt = rb && rb.querySelector('rt'); if (k < 0) return rt ? { len: 0, py: rt.textContent } : null; // inside a word: 取得 dé
+  const s0 = segment(ns).find(x => x[0] === o - a), py = rb ? rt && rt.textContent : soloRead(ns, segs, k, cut);
+  return { len: !s0 || s0[1] !== segs[k][1] ? segs[k][1] - segs[k][0] : 0, py: py ? (rb ? py : syllable(py).text.toLowerCase()) : null };
 }
 function hidePop() {
   P.hit = null; P.pinned = false; P.showEx = false; P.stack = []; $('#pop').hidden = true;
@@ -3210,7 +3222,7 @@ function neighbours(w) {
   const [a, b] = [...w], L = [], Rt = [];
   for (const k of Dict.index.keys()) if (k.length === 2 && k !== w && (k[0] === a || k[1] === b)) {
     const e = (Dict.entries(k) || []).find(x => !x.proper && !isRefOnly(x) && !isMinor(x) && x.simp === k); if (!e) continue;
-    (k[1] === b ? Rt : L).push({ w: k, e, f: (Words.map && Words.map.get(k)) || 0 });
+    (k[1] === b ? Rt : L).push({ w: k, e, f: Words.f(k) });
   }
   const top = arr => arr.sort((x, y) => y.f - x.f).slice(0, 3);
   const out = [...top(Rt), ...top(L)]; if (NB.size > 300) NB.clear(); NB.set(w, out); return out;
@@ -3517,66 +3529,185 @@ function pinyinForWord(w, nw) {
   }
   return out;
 }
-// a polyphonic character standing alone as a word, read from the words around it: rule(previous, next, the one before previous, the one after next),
-// '' at a clause boundary (end of the run of Han characters); null = the usual reading of PY_DEFAULT. No part-of-speech tags at
-// runtime, so only clear cases. Keys are simplified (the run goes through normZh first).
+// a polyphonic character standing alone as a word, read from the words around it: rule(previous, next, the one before previous, the one after next,
+// the third after), '' at a clause boundary (end of the run of Han characters); null = the usual reading of PY_DEFAULT. Keys are simplified
+// (the run goes through normZh first). Word classes come from jieba (Words.cls), one per word and often poor (气 n, 高兴 b, 很 zg): they only
+// add cases to the word lists below, and with old data (no classes) the rules are the lists alone.
 // 得: děi "must" after a subject or an adverb, or opening the clause, with something after it (你得把她扔了, 还得等, 那得看, 得赶紧走);
 // dé "to get" there when 了 / 过 / 的 or an object follow (他得了第一, 我得过奖, 我得的病, 这还得了), and as a clause of its own
 // (得，就这样 / 得嘞); after anything else, a verb or an adjective, it stays the complement de (跑得快, 气得把杯子摔了, 吓得她直哭):
-// a wrong děi there is worse than a missed one. A noun subject is only recognised in a few safe shapes (我妈得上班, 老王得去, 这事得慢慢来).
-const DEI_SUBJ = new Set(('我 你 他 她 它 您 咱 俺 谁 我们 你们 他们 她们 它们 咱们 俺们 我俩 你俩 他俩 咱俩 大家 人家 自己 别人 有人 咱家 ' +
+// a wrong děi there is worse than a missed one.
+const DEI_SUBJ = new Set(('我 你 他 她 它 您 咱 俺 谁 我们 你们 他们 她们 它们 咱们 俺们 我俩 你俩 他俩 咱俩 大家 人家 自己 别人 有人 咱家 每人 人人 个个 每个人 大伙 大伙儿 ' +
   '妈 爸 妈妈 爸爸 哥 姐 哥哥 姐姐 弟弟 妹妹 爷爷 奶奶 姥姥 姥爷 孩子 儿子 女儿 闺女 老婆 老公 媳妇 老师 大夫 医生 警察 ' +
   '就 也 都 还 又 才 可 先 再 那 这 那就 也就 还是 就是 可是 但是 但 不过 所以 那么 要不 要么 不然 否则 于是 因此 而且 然后 接着 最后 首先 ' +
-  '现在 一定 必须 至少 起码 最少 当然 肯定 估计 恐怕 怕是 也许 可能 大概 早晚 迟早 总归 终归 反正 横竖 照样 多少 早就 ' +
-  '今天 明天 今晚 晚上 今年 去年 昨天 前天 刚 刚才 后来 当时 回头 以后 将来 待会 待会儿 一会儿 下次 下回 这回 这次 到时候 到时 这下').split(' '));
-// after 这 / 那, a few nouns that are never verbs (这事得慢慢来, 这钱得还; not 这整得我…, 那唱得叫一个好)
-const DEI_THIS = new Set('事 事儿 事情 人 病 钱'.split(' '));
+  '现在 一定 必须 至少 起码 最少 当然 肯定 估计 恐怕 怕是 也许 可能 大概 早晚 迟早 总归 终归 反正 横竖 照样 多少 早就 一共 总共 已经 一直 马上 立刻 ' +
+  '今天 明天 今晚 晚上 今年 去年 昨天 前天 刚 刚才 后来 当时 回头 以后 将来 待会 待会儿 一会儿 下次 下回 这回 这次 到时候 到时 这下 ' +
+  '小时候 那时候 那时 这时候 这时 当年 从前 原来 本来 时 时候 之前 之后 前 后 那会儿 这会儿').split(' ')); // 年轻时得过奖, 吃饭前得洗手
+// after 这 / 那 / 这种 / 两个, nouns that are never verbs (这事得慢慢来, 这钱得还, 这种病得早点治, 这道题得用公式算; not 这整得我…, 那唱得叫一个好)
+const DEI_THIS = new Set('事 事儿 事情 人 病 钱 题 菜 车 饭 药 书 字 账 课 票 酒 茶 水 电 屋 活儿 东西 玩意儿'.split(' '));
 const SURNAMES = '王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗郑梁谢宋唐许韩冯邓曹彭曾萧田董袁潘蒋蔡杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范贾夏韦方邹孟熊秦邱尹薛闫段雷侯史陶贺顾毛郝龚邵覃武戴孔';
 const DE_OBJ = new Set('癌症 绝症 感冒 肺炎 冠军 金牌 银牌 铜牌 大奖 满分 头奖 过奖 第一 第二 第三 第一名 第二名 第三名'.split(' '));
-// a subject or an adverb before 得, or nothing (得 opens the clause)
-const deiBefore = (p, pp) => !p || DEI_SUBJ.has(p) || (p.length === 2 && '老小'.includes(p[0]) && SURNAMES.includes(p[1])) // 老王, 小张
-  || (p.length === 1 && (pp === '老' || pp === '小') && SURNAMES.includes(p) && !'戴顾'.includes(p)) || ((pp === '这' || pp === '那') && DEI_THIS.has(p)) // 小/李 split by the segmenter (not 老 "always" + verb: 帽子老戴得歪歪扭扭)
-  || (/^(俩|仨|几个)$/.test(p) && /^[我你他她咱俺]们?$/.test(pp)); // 我们/俩, 你们/几个
+// what one has won or caught (得过金奖, 得过流感, 得过这个病): after 得过 only, where 过 already says "has had"
+const DE_OBJ_RE = /[奖牌杯]$|^[冠亚季]军$|^第[一二三四五六七八九十]|[病症炎癌]$|感冒|流感|^奖/;
+// before 得: 这 / 那 / 这种 / 两个 / 这道…
+const DEI_DET = /^(这|那|这个|那个|这些|那些|这种|那种|哪个|每个|[一两三四五六七八九十几]个)$/;
+// a subject or an adverb before 得, or nothing (得 opens the clause); a person in the plural (孩子们得…)
+const deiBefore = (p, pp) => !p || DEI_SUBJ.has(p) || DEI_SUBJ.has(pp + p) // 这/下 split by the segmenter (这下得重新来了)
+  || (p.length === 2 && '老小'.includes(p[0]) && SURNAMES.includes(p[1])) // 老王, 小张
+  || (p.length === 1 && (pp === '老' || pp === '小') && SURNAMES.includes(p) && !'戴顾'.includes(p)) // 小/李 split by the segmenter (not 老 "always" + verb: 帽子老戴得歪歪扭扭)
+  || (DEI_THIS.has(p) && DEI_DET.test(pp)) || (p.length > 1 && /^[这那]/.test(p) && (DEI_THIS.has(p.slice(-1)) || DEI_THIS.has(p.slice(-2)))) // 这种/病, 那件事
+  || (/^(俩|仨|几个)$/.test(p) && /^[我你他她咱俺]们?$/.test(pp)) || /^..{0,2}们$/.test(p); // 我们/俩, 你们/几个
+// jieba's class where it misleads these rules (保守 v: 专家估计得保守了 is the complement; 干活 a: 接着得干活了)
+const WC_FIX = { 保守: 'a', 干活: 'v' }, wc = w => WC_FIX[w] || Words.cls(w);
+const verbDef = w => (Dict.entries(w) || []).some(e => !e.proper && e.defs.some(d => /^to /.test(d)));
+// a noun CC-CEDICT does not also give as a verb ("to …"): jieba files many verbs and adjectives as nouns (生气 n, 领导 n, 伤心 n)
+const nounish = w => wc(w) === 'n' && !verbDef(w);
+// noun subjects the word classes show (none without them): after 这个 / 这种 / 两个 / a measure word (这个月得交房租, 很多人得排队, 这道题得…),
+// a time word (上周得了流感), a pronoun (这病是怎么得的), a person or a thing by its last character (学生得…, 房子得修, 司机得…, 这玩意儿得
+// 多少钱), a group after a pronoun (他们队得了亚军); never a verb (这人长得…, 她伤心得哭了, 他领导得好: CC-CEDICT gives them as verbs).
+// jieba also calls many adjectives nouns (热情, 精彩, 热闹, 漫长): so not after a bare 这 / 那 (瞧那热闹得，跟过年似的), nor at a clause's start
+// (他很客气，客气得让人不舒服), and the adjectives with a noun's last character are listed (漫长得让人绝望, 棘手得让人头疼)
+const DEI_UNIT = /^(月|年|天|周|礼拜|星期|学期|季度)$/, DEI_GROUP = new Set('队 班 组 家 厂 村 连 排 院 系 所 公司 单位 学校 部门'.split(' '));
+const DEI_NOUN_END = /[人们子儿师生员长家工夫士手匠友哥姐妹弟爷奶叔姨婶嫂妈爸娘婆公客者主机]$/, DEI_NOT_NOUN = new Set(('动人 感人 迷人 诱人 惊人 吓人 气人 烦人 逗人 恼人 ' +
+  '宜人 喜人 怡人 撩人 磨人 熬人 累人 馋人 闷人 冻人 晒人 呛人 羞人 腻人 过人 醉人 暖人 伤人 无人 陌生 亲生 天生 野生 卫生 漫长 细长 修长 狭长 冗长 悠长 ' +
+  '棘手 顺手 拿手 称手 趁手 扎手 烫手 辣手 活生生 独家 到家').split(' '));
+const DEI_NOT_T = new Set('下来 下去 过来 过去 起来 当 清 目 节 往往'.split(' ')), DEI_NOT_R = new Set('这么 那么 这样 那样 怎样 如此 这般 那般 什么 其 何 如何'.split(' ')); // 何得如此无礼, 如何得脱 dé
+const nounBefore = (p, pp) => Words.pos && ((((DEI_DET.test(pp) && pp.length > 1) || wc(pp) === 'm') && (nounish(p) || DEI_UNIT.test(p) || DEI_THIS.has(p)))
+  || (wc(p) === 't' && p.length > 1 && !DEI_NOT_T.has(p)) || (p.length > 2 && wc(p.slice(0, 2)) === 't' && nounish(p)) || (wc(p) === 'r' && !DEI_NOT_R.has(p)) || (/^[我你他她咱俺]们?$/.test(pp) && DEI_GROUP.has(p))
+  || (((p.length > 1 && DEI_NOUN_END.test(p)) || (p.length > 2 && /^[这那]/.test(p))) && nounish(p) && !DEI_NOT_NOUN.has(p))); // 那件事, 这批货
 // after nothing or after a word that is also a verb (钱还得差不多了 huán, 他估计得没错), a degree word starts the complement de
 const DEI_VERBISH = new Set('还 估计 肯定 回头 接着'.split(' '));
 const DEI_COMP = /^(很|太|挺|非常|特别|越来越|这么|那么)|^(多|好|真|这样|那样|不行|要命|要死|厉害|慌|够呛|可以|不错|差不多|极了|没错|对|不对|准|及时|早|晚|快|慢|快点|满|飞快)$/; // 挺快 is one word
+const vlike = n => /^[vp]$/.test(wc(n));
+// a verb, or a phrase that starts with one, maybe after an adverb (遵守纪律, 卖房子, 重新装修, 趁热: jieba files many such phrases as nouns
+// or as x, and 重新 as an adjective), for noun subjects
+const vhead = n => {
+  if (n.length < 3) return wc(n) !== 'n' && vlike(n[0]);
+  const pre = (t, m) => { for (let L = Math.min(4, m); L > 1; L--) if (Words.map.has(t.slice(0, L))) return t.slice(0, L); return t[0]; }, x = pre(n, n.length - 1), y = pre(n.slice(x.length), 4);
+  return vlike(x) || (x.length > 1 && verbDef(x)) || (/^[ad]$/.test(wc(x)) && (vlike(y) || verbDef(y)));
+};
+const vlikeN = n => vlike(n) || (n.length > 1 && /^[nxi]?$/.test(wc(n)) && (verbDef(n) || vhead(n)));
+const verbN = w => vlikeN(w) || (w.length > 1 && verbDef(w)); // (not a single character: nearly all have a "to …" sense, 了 too)
+// with word classes: an adjective or a state word (这钱他还得爽快, 估计得保守了; not one used as a verb: 还得麻烦您), a degree word (估计得过于乐观,
+// 估计得偏低), a result (他还得上这笔钱吗, 还得起); but a manner word before a verb is děi (你还得多操心, 还得好好学习, 得快点走)
+const DEI_DEG = new Set('过于 相当 比较 有点 有些 有点儿 极其 更 最 十分 蛮 怪 偏 太过 实在'.split(' ')), DEI_RES = new Set('上 起 清 完'.split(' '));
+const DEI_MANNER = new Set('多 少 早 晚 快 慢 好好 慢慢 快点 早点 赶紧 赶快 多多 好好儿 慢慢儿 重新'.split(' ')), DEI_PRON = /^(我|你|您|他|她|它|我们|你们|他们|她们|咱们|人家|大家)$/;
+// (also any two-character adverb or adjective before a verb, not a degree word: 还得重新分区, 还得费劲重装)
+const manner = (n, nn) => (DEI_MANNER.has(n) && (wc(nn) === 'v' || verbN(nn))) || (n.length === 2 && /^[ad]$/.test(wc(n)) && !DEI_COMP.test(n) && !DEI_DEG.has(n) && verbN(nn));
+const deiComp = (n, nn) => !manner(n, nn) && !DEI_NEXT.has(n) && (DEI_COMP.test(n) || n.length === 4 || DEI_DEG.has(n) || /^偏/.test(n) || (/^[azi]$/.test(wc(n)) && !(wc(n) === 'a' && DEI_PRON.test(nn)))
+  || (DEI_RES.has(n) && (!nn || /^[这那吗呢了啊]/.test(nn) || /^[rm]$/.test(wc(nn))))); // 钱还得一干二净, 交代得清清楚楚
+// a thought before 得 (我认为得赶紧走, 他寻思着得给你送点东西): děi only when a verb follows; the northeastern 还不得 (我还不得累死) is the same
+// (DEI_NEXT: what may follow a noun subject's děi besides a verb or a preposition)
+const DEI_THINK = new Set('觉得 认为 以为 感觉 觉着 看来 想来 寻思着 琢磨着 估摸着 合计着 寻思 琢磨 估摸'.split(' '));
+const DEI_NEXT = new Set('先 再 赶紧 马上 立刻 赶快 尽快 抓紧 提前 按时 好好 慢慢 早点 多少 多久 多长时间 几天 自己 亲自 一起 一块 一块儿 一个人 天天 每天 也 都 还 有人 有点 有些 有个 重新'.split(' '));
+// after a noun subject or a thought, an adjective or a degree word is left alone (jieba may have called a verb a noun)
+const deiCompN = n => DEI_COMP.test(n) || DEI_DEG.has(n) || /^[az]$/.test(wc(n)) || /^[直偏]/.test(n);
+// 得 + an amount: dé or děi (再得两分, 得两票 / 你得一个人去, 起码得半个月, 这活儿得两个人干, 这得两万块钱): děi when it is a span of time,
+// a number of people doing something, or what something costs or needs at least
+const DEI_NUM = /^([两三四五六七八九十几半百千万\d]|一[个点分次些块百千万十两])/, DEI_AT_LEAST = new Set('起码 至少 最少 少说 最多 少说也 起码也 至少也 怎么也'.split(' '));
+const DEI_DUR = /^[一两三四五六七八九十几半百\d]*(个)?(天|年|月|小时|钟头|分钟|礼拜|星期|周|宿|会儿|阵子?|辈子)$/, DEI_MONEY = /^(块|元|块钱|万|万块|千|百|毛|钱)|[块元万]$/;
+// 得过 + what one crosses or a while: děi (你得过安检, 你得过马路才能到, 我得过一会儿再走)
+const DEI_GUO = new Set('安检 马路 这关 那关 河 桥 海关 红绿灯 隧道 两天 几天 一阵 一阵子'.split(' '));
 // a run of Han characters ends at punctuation or at the paragraph's edges: the rules read '' there. A run cut by markup, a line break, a dash
 // or an ellipsis (他气<b>得</b>把…, 跑——得——飞快, a podcast sentence 得说不出话来 in its own <span>) reads SOLO_CUT: unknown, the usual reading
 const SOLO_CUT = '?', SOLO_GLUE = /[\s—–―…⋯·～~]/;
-// [cut before, cut after] for the run full[a, b); open: the text's own edges are cuts too (a « Lignes » row is one sentence of the transcript)
+// [cut before, cut after] for the run full[a, b); open: the text's own edges, [before, after] (true = a cut: a « Lignes » row
+// that may go on from the row before, see rowCut). A word in quotes right before is a cut too (直“邀”得心里发痒, 这张“古老”得油漆尽褪的桌子),
+// a quoted sentence is not (“我累了。”得赶紧走)
 function soloCut(full, a, b, open) {
   let i = a - 1, j = b; while (i >= 0 && SOLO_GLUE.test(full[i])) i--; while (j < full.length && SOLO_GLUE.test(full[j])) j++;
-  return [i < 0 ? open : HAN.test(full[i]), j >= full.length ? open : HAN.test(full[j])];
+  if (i > 0 && /[”’」』）)》】〉"']/.test(full[i]) && HAN.test(full[i - 1])) return [true, j >= full.length ? open[1] : HAN.test(full[j])];
+  return [i < 0 ? open[0] : HAN.test(full[i]), j >= full.length ? open[1] : HAN.test(full[j])];
+}
+// a block's own edges for soloCut: a book paragraph opens and closes a clause. A podcast or TV block (a « Lignes » row, a « Texte »
+// paragraph) goes on from the sentence before unless that one ends with punctuation or another speaker says it: speech recognition
+// cuts sentences anywhere, often right after a verb (他当时气 | 得说不出话来 stays de; 。| 得赶紧走 is děi); a block whose own sentence
+// is not in R.data.pod.segs is unknown: a cut
+function rowCut(block) {
+  const ps = block.matches('.pseg') ? [block] : $$('.pseg', block), segs = ps.length && R.data && R.data.pod && R.data.pod.segs;
+  if (!segs) return block.closest('.lrow') ? [true, true] : [false, false];
+  const i = +ps[0].dataset.i, k = +ps[ps.length - 1].dataset.i, g = segs[i], h = segs[k];
+  const goes = (x, y, end) => { if (!y) return true; if (!x) return false; if (x.sp != null && y.sp != null && x.sp !== y.sp) return false; const t = x.t.replace(end ? /[\s—–―…⋯·～~]+$/ : /^[\s—–―…⋯·～~]+/, ''); return !t || HAN.test(end ? t[t.length - 1] : t[0]); };
+  return [goes(segs[i - 1], g, true), goes(segs[k + 1], h, false)];
 }
 const SOLO_READ = {
-  得: (p, n, pp, nn) => {
+  得: (p, n, pp, nn, n3) => {
     if (p === SOLO_CUT || n === SOLO_CUT) return null;
     if (!p && !n) return 'de2'; // 得，就这样吧 "all right"
-    if (!deiBefore(p, pp)) return null;
-    // 他得过病, 得过两次奖: dé; 我得过一会儿再走, 你得过安检: děi
-    if (n === '过') return !nn || DE_OBJ.has(nn) || /^[一两三四五六七八九十几]+[次回]$|^[病奖]$/.test(nn) ? 'de2' : null;
+    // S: subject or adverb from the lists; V: also a verb (还 huán, 估计), decided by what follows; T: a thought; N: a noun subject from the classes
+    const kind = DEI_THINK.has(p) || (p === '着' && DEI_THINK.has(pp + p)) || (p === '不' && pp === '还') ? 'T' : DEI_VERBISH.has(p) ? 'V' : deiBefore(p, pp) ? 'S' : nounBefore(p, pp) ? 'N' : null;
+    if (!kind) return null;
+    // 他得过病, 得过两次奖, 她得过金奖: dé; 我得过一会儿再走, 你得过安检: děi; 他得过 (end) dé, but 日子还得过 děi
+    if (n === '过') return kind === 'T' ? null : !nn ? (kind === 'S' && p !== '还' ? 'de2' : null) : DE_OBJ.has(nn) || DE_OBJ_RE.test(nn) || (DEI_DET.test(nn) && DE_OBJ_RE.test(n3)) || /^[一两三四五六七八九十几]+[次回]$/.test(nn) ? 'de2' : DEI_GUO.has(nn) || DEI_DUR.test(nn) ? 'dei3' : null;
     if (n === '了' && p === '还' && pp !== '这' && pp !== '那') return null; // 这么多钱你还得了吗 huán de liǎo; 这还得了 dé
-    if (n === '了' || n === '的' || DE_OBJ.has(n) || (!p && /^[嘞咧啦啊呀吧嘛哦喽]$/.test(n))) return 'de2';
-    // 得不 / 得两分: dé, děi or de, no telling without more (你得不到, 你得一个人去, 再得两分); 你得不断努力 is děi
-    if (!n || (n[0] === '不' && !/^不(断|停|时)$/.test(n)) || /^[两三四五六七八九十几半百千万\d]|^一[个点分次些块]/.test(n) || ((!p || DEI_VERBISH.has(p)) && DEI_COMP.test(n))
-      || (DEI_VERBISH.has(p) && n.length === 4)) return null; // 钱还得一干二净, 交代得清清楚楚
-    return 'dei3';
+    if (kind !== 'T' && (n === '了' || n === '的' || DE_OBJ.has(n) || (!p && /^[嘞咧啦啊呀吧嘛哦喽]$/.test(n)))) return 'de2';
+    // 得两分 / 你得一个人去 / 他们仨得一块走 (together)
+    if (DEI_NUM.test(n) && !(/^一块儿?$/.test(n) && nn !== '钱')) return kind !== 'T' && (DEI_AT_LEAST.has(p) || DEI_DUR.test(n) || DEI_DUR.test(nn) || (nn === '人' && /个$/.test(n) && !!n3)
+      || ((DEI_MONEY.test(n) || DEI_MONEY.test(nn)) && (kind === 'N' || /^(这|那|这个|那个)$/.test(p)))) ? 'dei3' : null;
+    // 得不: dé, děi or de, no telling without more (你得不到, 得不偿失); 你得不断努力 is děi
+    if (!n || (n[0] === '不' && !/^不(断|停|时)$/.test(n))) return null;
+    // with word classes, a plain noun after 得 is what one gets (他得奖学金, 得大利, 得要领: dé, or unknown), and a clause that opens
+    // with 得 needs a verb after it (得赶紧走, 得看情况); without them, as before
+    if (kind === 'S' && Words.pos && wc(n) === 'n' && (n.length < 3 || DE_OBJ_RE.test(n)) && n[0] !== n[1] && !verbDef(n) && !DEI_NEXT.has(n)) return DE_OBJ_RE.test(n) ? 'de2' : null;
+    if (kind === 'S' && !p && Words.pos) return manner(n, nn) || ((vlikeN(n) || (n.length === 1 && verbDef(n)) || DEI_NEXT.has(n) || /^[dt]$/.test(wc(n))) && !deiCompN(n)) ? 'dei3' : null;
+    if (kind === 'S') return !p && DEI_COMP.test(n) && !(DEI_MANNER.has(n) && wc(nn) === 'v') ? null : 'dei3'; // 得快点 / 得快点走
+    if (kind === 'V') return deiComp(n, nn) ? null : 'dei3';
+    // N, T: a verb must follow (她伤心得哭了 never gets here: 伤心 is a verb in CC-CEDICT); 这批货得今天发出去
+    return manner(n, nn) || ((vlikeN(n) || DEI_NEXT.has(n) || (wc(n) === 't' && vlikeN(nn))) && !deiCompN(n)) ? 'dei3' : null;
   }
 };
+// the segmenter's words, and a few that swallow a standalone 得 split again: 你得来 / 早晚得出事 (děi + 来 / 出), 他乐得合不拢嘴 / 这钱挣得不容易
+// (V + complement de, not lèdé / zhèngdé), 我还不得累死 (bù děi, northeastern). Real words keep their reading: 取得, 获得, 值得, 觉得, 赢得了比赛,
+// 乐得清闲, 得来不易, 这是怎么得来的, 我们得出结论. A split is kept only when SOLO_READ then reads the 得 as meant. [start, end, pinyin?] per word
+// (吃得了: one word, read chī de liǎo, not the 得了 dé le it is made of). 得到 / 得出 after a one-character verb are its potential
+// complement (办得到, 说得出: de dào, de chū), not after a modal or a verb of wanting (能得到, 想得到, 争得到 stay dé); so are the
+// words of that shape CC-CEDICT lacks or reads dé (猜得出, 找得着, 跟得上)
+const DE_POT = { 了: 'liao3', 着: 'zhao2' }, DE_POT_RE = /^[^不]得[了到出住上起下动完清着见过]$/, DE_POT_NOT = new Set([...'能会要想该敢肯没难可应须需愿欲盼望求争获取赢夺博谋得是有让使叫被给为即乃如无随便均皆必']); // jieba's v: 即得到消息 dé
+const DE_SPLIT_V = new Set('乐得 挣得 照得 生得 喜得 引得 赢得 争得'.split(' ')), DE_SPLIT_CHU = new Set('事 事儿 趟 一趟 差 门 钱 力 院 国 远门 血 汗'.split(' '));
+const DE_SPLIT_IDIOM = new Set('合不拢嘴 手舞足蹈 眉开眼笑 屁颠屁颠 前仰后合 心花怒放 喜笑颜开 笑逐颜开 面红耳赤 不可开交 头破血流 你死我活 盆满钵满 热火朝天 哈哈大笑'.split(' '));
+const DE_SPLIT_DEG = new Set('很 太 挺 真 好 特别 非常 十分 那叫 可'.split(' ')), DE_SPLIT_LIKE = /^(那样|这样|那么|这么|跟|像|什么似的|要命|要死|不行|不得了|够呛|厉害|慌)$/;
+// V得 that CC-CEDICT reads dé, followed by what only a complement can be: 直… (乐得直拍大腿), 那样, a degree word + adjective (赢得很轻松),
+// 不 + adjective (挣得不容易), 多 / 少 at the end, an adjective that is not also a verb (挣得辛苦 no: "to work hard"; 赢得尊重 no; 乐得清闲 never);
+// 乐得 / 喜得 / 挣得 at the end (瞧把你乐得), a few four-character phrases of how one looks (乐得合不拢嘴, 争得面红耳赤, 挣得盆满钵满; not
+// 争得一席之地, 乐得顺水推舟); 引得 + who it moves (引得大家哈哈大笑). The adjective ends the clause (赢得漂亮; not 赢得良好口碑, 挣得丰厚的报酬)
+const adjOnly = w => /^[az]$/.test(wc(w)) && !verbDef(w);
+const deSplitV = (x, n, nn) => DE_SPLIT_V.has(x) && n !== '了' && (/^直(?!到|接|至|达|奔|线|播)/.test(n) || DE_SPLIT_LIKE.test(n)
+  || (DE_SPLIT_DEG.has(n) && /^[az]$/.test(wc(nn))) || (/^(很|太|挺|特别|非常|十分)./.test(n) && !/^(很|太|好)多|^好几/.test(n))
+  || (n[0] === '不' && (wc(n) === 'a' || wc(nn) === 'a')) || (/^[多少]$/.test(n) && (!nn || /^[了啊呢吧的]$/.test(nn)))
+  || (x !== '乐得' && x !== '引得' && adjOnly(n) && (!nn || /^([了啊呀呢吧嘛哪]|极了)$/.test(nn))) || (/^(乐得|喜得|挣得)$/.test(x) && !n) || DE_SPLIT_IDIOM.has(n) || (x === '引得' && /^[nr]$/.test(wc(n))));
+function soloSegs(ns, cut) {
+  const segs = segment(ns); if (!ns.includes('得') || !Words.ready) return segs;
+  const w = j => j < 0 ? (cut[0] ? SOLO_CUT : '') : j >= segs.length ? (cut[1] ? SOLO_CUT : '') : ns.slice(segs[j][0], segs[j][1]);
+  for (let k = segs.length - 1; k >= 0; k--) {
+    const [a, b] = segs[k], x = ns.slice(a, b); if (b - a < 2 || !x.includes('得')) continue;
+    const p = w(k - 1), n = w(k + 1), nn = w(k + 2); if (p === SOLO_CUT || n === SOLO_CUT) continue;
+    let want = null;
+    if (x === '得来' && p !== '怎么' && p !== '如何' && (!n || /^(一趟|一下|一次|一回|这儿|这里)$/.test(n) || vlike(n))) want = 'dei3';
+    else if (x === '得出' && (DE_SPLIT_CHU.has(n) || (/^(问题|毛病|乱子|岔子|事故)$/.test(n) && nn !== '的'))) want = 'dei3'; // 早晚得出问题; not 得出问题的答案
+    else if (x === '不得' && p === '还' && n && (vlike(n) || /^[被让叫把给]$/.test(n))) want = 'dei3';
+    else if (deSplitV(x, n, nn)) want = 'de';
+    else if ((x === '得到' || x === '得出') && p.length === 1 && wc(p) === 'v' && !DE_POT_NOT.has(p)) want = 'de'; // 办得到, 说得出
+    else if (DE_POT_RE.test(x) && x !== '想得到' && !/^\S+ de5/.test((Dict.entries(x) || [{ pinyin: '' }])[0].pinyin)) { segs[k] = [a, b, [pinyinForWord(x[0], x[0])[0], 'de5', DE_POT[x[2]] || pinyinForWord(x[2], x[2])[0]]]; continue; } // 吃得了, 猜得出, 找得着
+    if (!want) continue;
+    const at2 = ns[a] === '得' ? a + 1 : b - 1, s2 = [...segs.slice(0, k), [a, at2], [at2, b], ...segs.slice(k + 1)], j = ns[a] === '得' ? k : k + 1;
+    const r = soloRead(ns, s2, j, cut); if (want === 'de' ? !r : r === want) segs.splice(k, 1, [a, at2], [at2, b]);
+  }
+  return segs;
+}
 // reading of segment k of ns by its neighbours, when it is a single character with rules (callers check SOLO_READ first: free for other words)
 function soloRead(ns, segs, k, cut) {
   const w = j => j < 0 ? (cut && cut[0] ? SOLO_CUT : '') : j >= segs.length ? (cut && cut[1] ? SOLO_CUT : '') : ns.slice(segs[j][0], segs[j][1]), f = SOLO_READ[w(k)];
-  return f && segs[k][1] - segs[k][0] === 1 ? f(w(k - 1), w(k + 1), w(k - 2), w(k + 2)) : null;
+  return f && segs[k][1] - segs[k][0] === 1 ? f(w(k - 1), w(k + 1), w(k - 2), w(k + 2), w(k + 3)) : null;
 }
 // pinyin of segment k (ruby and « Lignes » alike)
-const segPinyin = (run, ns, segs, k, cut) => { const [a, b] = segs[k], s = b - a === 1 && SOLO_READ[ns[a]] && soloRead(ns, segs, k, cut); return s ? [s] : pinyinForWord(run.slice(a, b), ns.slice(a, b)); };
+const segPinyin = (run, ns, segs, k, cut) => { const [a, b, py] = segs[k], s = !py && b - a === 1 && SOLO_READ[ns[a]] && soloRead(ns, segs, k, cut); return py || (s ? [s] : pinyinForWord(run.slice(a, b), ns.slice(a, b))); };
 function annotate(sec) {
   if (sec.dataset.py) return; sec.dataset.py = '1';
   const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('rt,rp,ruby,.prep') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
   const nodes = []; let n; while ((n = tw.nextNode())) if (HAN.test(n.data)) nodes.push(n);
   const isTrad = bookIsTrad();
   // the block's whole text: what comes before and after each text node's runs (soloCut: 他气<b>得</b>把… is not 得 opening a clause)
-  const open = !!sec.closest('.lrow'), at = new Map(); let full = '';
+  const open = rowCut(sec), at = new Map(); let full = '';
   if (Words.ready) { const tw2 = textWalker(sec); while ((n = tw2.nextNode())) { at.set(n, full.length); full += n.data; } }
   for (const node of nodes) {
     const d = node.data, frag = document.createDocumentFragment(); let i = 0, buf = '';
@@ -3585,7 +3716,7 @@ function annotate(sec) {
       const re = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u3007]+/g; let m;
       while ((m = re.exec(d))) {
         const run = m[0], ns = normZh(run, isTrad);
-        const segs = segment(ns), o = at.get(node) + m.index, cut = soloCut(full, o, o + run.length, open);
+        const o = at.get(node) + m.index, cut = soloCut(full, o, o + run.length, open), segs = soloSegs(ns, cut);
         segs.forEach(([a, b], k) => { const nw = ns.slice(a, b); plan.set(m.index + a, [b - a, segPinyin(run, ns, segs, k, cut), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); });
       }
     }
@@ -4452,13 +4583,13 @@ function pyWord(w, nw, ps0) {
   }
   return out;
 }
-function pyLine(text) {
+function pyLine(text, open = [true, true]) {
   const isTrad = bookIsTrad(), toks = [], re = /[㐀-䶿一-鿿豈-﫿〇]+/g; let last = 0, m;
   const other = str => { for (const x of str.match(/[A-Za-z0-9]+|\S/g) || []) { const p = PY_PUN[x]; toks.push(p ? { t: p[0], k: p[1] } : { t: x, k: 'w' }); } };
   while ((m = re.exec(text))) {
     other(text.slice(last, m.index)); last = m.index + m[0].length;
     const run = m[0], ns = normZh(run, isTrad);
-    if (Words.ready) { const segs = segment(ns), cut = soloCut(text, m.index, m.index + run.length, true); segs.forEach(([a, b], k) => toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b), segPinyin(run, ns, segs, k, cut)), k: 'w' })); }
+    if (Words.ready) { const cut = soloCut(text, m.index, m.index + run.length, open), segs = soloSegs(ns, cut); segs.forEach(([a, b], k) => toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b), segPinyin(run, ns, segs, k, cut)), k: 'w' })); }
     else for (let i = 0; i < run.length;) { // no word list: longest dictionary match
       let L = 1; for (let n = Math.min(Dict.maxLen, run.length - i); n > 1; n--) if (Dict.entries(ns.slice(i, i + n))) { L = n; break; }
       toks.push({ t: pyWord(run.slice(i, i + L), ns.slice(i, i + L)), k: 'w' }); i += L;
@@ -4486,7 +4617,7 @@ const LP = { obs: null, gen: 0, q: new Set(), busy: false,
     if (Dict.ready && Words.ready) go();
     else { ensureDict(); Dict.load().then(() => Words.load().catch(() => {})).then(go).catch(() => {}); }
   },
-  fill(el) { if (el.dataset.py == null && el.isConnected) el.dataset.py = pyLine(segText(el.previousElementSibling)); },
+  fill(el) { if (el.dataset.py == null && el.isConnected) el.dataset.py = pyLine(segText(el.previousElementSibling), rowCut(el.closest('.lrow'))); },
   add(sec) {
     const rows = $$('.lpy:not([data-py])', sec); if (!rows.length) return;
     // reads first, then writes (one layout, not one per row)
