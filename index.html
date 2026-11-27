@@ -954,7 +954,8 @@ function charEntry(c, py) {
 }
 // a polyphonic character whose reading depends on the word it sits in, when that word isn't in CC-CEDICT (藏民 zàngmín, 藏獒…)
 // (只 after a number is the measure word zhī: 两只手, 三只猫)
-const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4'], ['只', /[一二两三四五六七八九十百千几半每这那哪]只/, 'zhi1']];
+// (冲着 "towards" is chòng: 冲着我笑, 冲着门口跑去)
+const CTX_READ = [['藏', /[民族獒语語文区區人医醫药藥袍戏戲历曆]/, 'zang4'], ['只', /[一二两三四五六七八九十百千几半每这那哪]只/, 'zhi1'], ['冲', /^冲着$/, 'chong4']];
 function partEntry(x, word) {
   const es = Dict.entries(x); if (!es) return null;
   if (x.length === 1) {
@@ -1010,7 +1011,9 @@ function charGloss(c, e, n1 = 9, n2 = 2) {
 function compoundEntry(w, nw) {
   const word = nw || w;
   let names = cedictParts(word); const guess = guessFor(word, names); if (guess && guess.parts) names = guess.parts;
-  const parts = names.map(x => ({ w: x, e: partEntry(x, word) }));
+  // a character pinyinForWord reads from the other parts (背不动 bēi) takes the entry of that reading
+  const sp = names.some(x => x.length === 1 && x !== '得' && SOLO_READ[x]) ? pinyinForWord(word, word) : null; let at = 0;
+  const parts = names.map(x => { const i = at; at += x.length; return { w: x, e: sp && x.length === 1 && x !== '得' && SOLO_READ[x] && sp[i] ? charEntry(x, sp[i]) : partEntry(x, word) }; });
   if (parts.some(p => !p.e)) return null;
   // pinyin of the whole word, syllable by syllable (点点头: the doubled 点 is not a separate part)
   const py = [...word].length === names.join('').length ? parts.map(p => p.e.pinyin).join(' ') : [...word].map(ch => { const e = partEntry(ch, word); return e ? e.pinyin : ''; }).join(' ');
@@ -3165,16 +3168,20 @@ function hitResults(hit) {
     if (ce) { ce.literal = true; results[0] = { word: r0.word, entries: common ? [ce, ...r0.entries] : [...r0.entries, ce] }; }
   }
   // the ruby's word comes first when soloSegs split it off a longer one (你得来: 得 "must", not 得来; 他乐得合不拢嘴: 乐, not 乐得 "only too glad to"),
-  // and a standalone 得 read děi or dé under the ruby comes first here too (你得把她… "must"), and « Ajouter » saves that reading
+  // and a standalone 得 read děi or dé under the ruby comes first here too (你得把她… "must"), as does any other character SOLO_READ
+  // reads from its neighbours (他冲我笑 chòng, 长得好看 zhǎng, 一宿 xiǔ), and « Ajouter » saves that reading
   const sr = Words.ready ? hitSoloRead(hit) : null;
   if (sr && sr.len) { const i = results.findIndex(x => x.word.length === sr.len); if (i > 0) results.unshift(...results.splice(i, 1)); }
   const solo = sr && sr.py && results.find(x => x.word.length === 1 && SOLO_READ[normZh(x.word, bookIsTrad())]), py = solo && sr.py;
-  if (py) { const es = solo.entries, i = es.findIndex(e => syllable(e.pinyin).text.toLowerCase() === py); if (i > 0) solo.entries = [es[i], ...es.slice(0, i), ...es.slice(i + 1)]; } // a copy: Dict.entries is shared
+  // (a real sense rather than "variant of 著|着[zhao2]" when CC-CEDICT has both under the reading)
+  if (py) { const es = solo.entries, ok = e => syllable(e.pinyin).text.toLowerCase() === py, j = es.findIndex(e => ok(e) && !isRefOnly(e)), i = j >= 0 ? j : es.findIndex(ok); if (i > 0) solo.entries = [es[i], ...es.slice(0, i), ...es.slice(i + 1)]; } // a copy: Dict.entries is shared
+  // a longer word that reads the character otherwise goes after it (背起背篓: the segmenter's 背 bēi, not 背起 bèi qǐ; 长得 zhǎng de stays first); not for 得
+  if (py && results[0] !== solo && normZh(solo.word, bookIsTrad()) !== '得' && syllable(results[0].entries[0].pinyin.split(' ')[0]).text.toLowerCase() !== py) results.unshift(...results.splice(results.indexOf(solo), 1));
   return results;
 }
 // the ruby's word at the tapped character, as annotate() makes it (one run of Han characters, one text node, the same soloCut edges; once
 // annotated, each character sits in its own <ruby>: the run is read from the block's text): len = its length when soloSegs split it off
-// a longer word (你得来: 1), else 0; py = the reading of a standalone 得 (toneless text, děi), in pīn mode its own <rt>
+// a longer word (你得来: 1), else 0; py = the reading of a standalone 得 or other SOLO_READ character (text with its tone mark, děi), in pīn mode its own <rt>
 function hitSoloRead(hit) {
   const [node, off] = hit.pos[0], rb = node.parentElement && node.parentElement.closest('ruby[data-py]');
   const tw = textWalker(hit.block); let full = '', abs = -1, n;
@@ -3183,7 +3190,8 @@ function hitSoloRead(hit) {
   const d = rb ? full : node.data, o = rb ? abs : off, base = abs - o; let a = o, b = o + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
   const ns = normZh(d.slice(a, b), bookIsTrad()), cut = soloCut(full, base + a, base + b, rowCut(hit.block)), segs = soloSegs(ns, cut), k = segs.findIndex(s => s[0] === o - a);
   const rt = rb && rb.querySelector('rt'); if (k < 0) return rt ? { len: 0, py: rt.textContent } : null; // inside a word: 取得 dé
-  const s0 = segment(ns).find(x => x[0] === o - a), py = rb ? rt && rt.textContent : soloRead(ns, segs, k, cut);
+  // (in pīn mode off, a character the rules leave alone has its usual reading, as under the ruby: 这条路长得很 cháng, not 长得 zhǎng de first)
+  const one = segs[k][1] - segs[k][0] === 1 && SOLO_READ[ns[o - a]], s0 = segment(ns).find(x => x[0] === o - a), py = rb ? rt && rt.textContent : one && (soloRead(ns, segs, k, cut) || pinyinForWord(d[o], ns[o - a])[0]);
   return { len: !s0 || s0[1] !== segs[k][1] ? segs[k][1] - segs[k][0] : 0, py: py ? (rb ? py : syllable(py).text.toLowerCase()) : null };
 }
 function hidePop() {
@@ -3506,7 +3514,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sav
 /* ================= pinyin mode ================= */
 // usual reading of very common characters when they stand alone (CC-CEDICT lists several)
 const PY_DEFAULT = {};
-('削xiao1 约yue1 弄nong4 混hun4 逮dai3 屏ping2 累lei4 朴pu3 了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
+('削xiao1 约yue1 呗bei5 咋za3 弄nong4 混hun4 逮dai3 屏ping2 累lei4 朴pu3 了le5 的de5 得de5 着zhe5 著zhe5 地de5 还hai2 還hai2 都dou1 为wei4 為wei4 和he2 只zhi3 隻zhi1 种zhong3 種zhong3 个ge4 個ge4 们men5 們men5 么me5 麼me5 吗ma5 嗎ma5 呢ne5 吧ba5 啊a5 过guo4 過guo4 行xing2 那na4 哪na3 说shuo1 說shuo1 会hui4 會hui4 要yao4 便bian4 好hao3 看kan4 少shao3 重zhong4 中zhong1 发fa1 發fa1 觉jue2 覺jue2 将jiang1 將jiang1 相xiang1 难nan2 難nan2 当dang1 當dang1 没mei2 沒mei2 干gan4 幹gan4 乾gan1 长chang2 長chang2 一yi1 不bu4 大da4 上shang4 下xia4 处chu4 處chu4 给gei3 給gei3 着zhe5 似si4 教jiao1 差cha4 调diao4 調diao4 数shu4 數shu4 结jie2 結jie2 更geng4 空kong1 应ying1 應ying1 只zhi3 倒dao4 几ji3 幾ji3 背bei4 薄bao2 正zheng4 分fen1 作zuo4 车che1 車che1 和he2 与yu3 與yu3 着zhe5 么me5 得de5')
   .split(' ').forEach(t => { const m = t.match(/^(.)(.+)$/u); PY_DEFAULT[m[1]] = m[2]; });
 function pickPinyin(w, es) {
   if (w.length === 1 && PY_DEFAULT[w]) return [PY_DEFAULT[w]];
@@ -3520,10 +3528,14 @@ function pinyinForWord(w, nw) {
   const nameOnly = es && w.length > 1 && es.every(e => e.wikt && e.proper) && wfreq(nw) >= 300;
   if (es && !nameOnly) { const p = pickPinyin(w, es); if (p) return p; }
   if (w.length === 1) return [null];
-  const out = []; let i = 0;
-  for (const part of cedictParts(nw)) {
+  const out = [], parts = cedictParts(nw); let i = 0;
+  // a character with rules (not 得) inside a word CC-CEDICT lacks, read from the other parts as SOLO_READ reads words (背不动 bēi,
+  // 铺满 pū); the word's edges are cuts. compoundEntry gives the pop-up the same readings
+  const segs = parts.some(x => x.length === 1 && x !== '得' && SOLO_READ[x]) ? parts.map(x => [i, i += x.length]) : null; i = 0;
+  for (const [j, part] of parts.entries()) {
     const pe = Dict.entries(part); const ctx = part.length === 1 && CTX_READ.some(([c, re]) => c === part && re.test(nw)) ? partEntry(part, nw) : null;
-    const p = ctx ? [ctx.pinyin] : pe && pickPinyin(w.slice(i, i + part.length), pe);
+    const sr = !ctx && segs && part.length === 1 && part !== '得' && SOLO_READ[part] && soloRead(nw, segs, j, [true, true]);
+    const p = ctx ? [ctx.pinyin] : sr ? [sr] : pe && pickPinyin(w.slice(i, i + part.length), pe);
     if (p) out.push(...p); else for (let k = 0; k < part.length; k++) { const ce = Dict.entries(nw[i + k]); const cp = ce && pickPinyin(nw[i + k], ce); out.push(cp ? cp[0] : null); }
     i += part.length;
   }
@@ -3630,6 +3642,25 @@ function rowCut(block) {
   const goes = (x, y, end) => { if (!y) return true; if (!x) return false; if (x.sp != null && y.sp != null && x.sp !== y.sp) return false; const t = x.t.replace(end ? /[\s—–―…⋯·～~]+$/ : /^[\s—–―…⋯·～~]+/, ''); return !t || HAN.test(end ? t[t.length - 1] : t[0]); };
   return [goes(segs[i - 1], g, true), goes(segs[k + 1], h, false)];
 }
+// for the rules of the other characters below: a person (冲他笑, 数他最高), a number (一宿, 两宿), a sentence particle (日子还长着呢: the clause
+// ends), a degree word (太冲, not 太重做); then the tables of each character, in the order of the rules
+const SOLO_PRON = /^(我|你|您|他|她|它|咱|俺|我们|你们|他们|她们|它们|咱们|俺们|大家|人家|自己|别人)$/, SOLO_NUM = /^[一二两三四五六七八九十百千万几半]+$/, SOLO_PART = /^[吗呢吧啊呀嘛么啦哪哦]$/;
+// a word that makes the next one a measure word or a noun (这种, 三种, 各种)
+const SOLO_DET = /^[这那哪各每某多几一二两三四五六七八九十百千万此该同本]$|[这那]$/;
+const SOLO_DEG = new Set('很 太 挺 真 好 有点 有些 特别 非常 这么 那么 太过 更 最 越'.split(' ')); // 恩越重来情越深: zhòng
+const LIAO_V = new Set([...'跑走逃躲吃喝忘受做干办去来用拿管救帮治改写说看睡活熬撑挺扛顶打回到动搬修养嫁离留停交买卖花记找见够']), LIAO_OBJ = new Set('这么 那么 这么多 那么多 多少 多久 什么 这个 那个 这些 那些 一辈子'.split(' '));
+const ZHAO_V = new Set([...'找猜摸碰冻吓累饿烧烫见逮抓赶够闻买借撞砸淋熏呛噎磕绊扎咬蛰点']);
+const TOWARD_MOVE = /^(了|过|来|去|过来|过去|进|出|上|下|向|着|冲)/;
+const ZHANG_DEG = new Set('真 挺 很 特别 非常 太 这么 那么 可 蛮 越来越 十分 相当 比较 有点 还'.split(' '));
+const ZHANG_WHO = /^(妈|爸|妈妈|爸爸|爹|娘|父亲|母亲|爷爷|奶奶|姥姥|姥爷|外公|外婆|哥|哥哥|姐|姐姐|弟弟|妹妹|叔叔|舅舅|姑姑|阿姨|老爸|老妈|明星)$/;
+const ZHANG_LOOK = /^(像|跟|随|好看|难看|漂亮|帅|丑|俊|美|标致|秀气|精神|可爱|水灵|白净|周正|高|矮|胖|瘦|壮|结实|快|慢|好|不错|一般|挺好|挺好看|挺漂亮|真好看|真漂亮|还行|喜人|茂盛|旺|旺盛|五大三粗|眉清目秀|浓眉大眼|人高马大|细皮嫩肉|又高又大|白白胖胖|水灵灵)$/;
+const SHU_NEXT = /^(了|着|过|一下|一遍|不清|不过来|不完|得清|得过来|到|钱|星星|日子|羊|手指头?)$/;
+const BEI_LOAD = /^(包|书包|背包|包袱|行李|孩子|娃|篓|背篓|筐|柴|柴火|枪|黑锅|锅|新娘|老人|伤员|病人|母亲|父亲|老娘|奶奶|爷爷|女儿|儿子|媳妇|姑娘)$/;
+const ZHUAN_ROUND = /^[一两三四五六七八九十几半好个]*圈儿?$/;
+const JIAO_BEFORE = new Set('一 个 好 安稳 回笼 囫囵 懒 午 睡 睡不着 睡着 睡得着 睡不好 补'.split(' '));
+const ZHONG_CROP = new Set('菜 树 花 草 地 田 粮 粮食 庄稼 玉米 小麦 麦子 水稻 稻子 土豆 豆子 瓜 西瓜 果树 蔬菜 棉花 葡萄 白菜 萝卜 花生 黄瓜 茄子 辣椒 竹子 树苗 药材 烟叶'.split(' '));
+const REDO = new Set('做 写 画 说 讲 读 念 考 选 买 洗 装 修 盖 拍 唱 演 抄 算 印 来 回 返 逢 聚 游 访 披 燃 拾 排 弹 录 编 起'.split(' '));
+const LIANG_NEXT = /^(着|过|一下|体温|血压|身高|体重|尺寸|腰围|尺码|脉搏|距离|长度)$/;
 const SOLO_READ = {
   得: (p, n, pp, nn, n3) => {
     if (p === SOLO_CUT || n === SOLO_CUT) return null;
@@ -3654,7 +3685,64 @@ const SOLO_READ = {
     if (kind === 'V') return deiComp(n, nn) ? null : 'dei3';
     // N, T: a verb must follow (她伤心得哭了 never gets here: 伤心 is a verb in CC-CEDICT); 这批货得今天发出去
     return manner(n, nn) || ((vlikeN(n) || DEI_NEXT.has(n) || (wc(n) === 't' && vlikeN(nn))) && !deiCompN(n)) ? 'dei3' : null;
-  }
+  },
+  // the other characters: one rule each, from the next word or two and the word before (null = the usual reading, PY_DEFAULT or the
+  // dictionary's first); a cut on the side a rule looks at is never in its lists, and a rule that needs something absent there (种, 重) stops.
+  // Lexical lists only: the same with or without word classes
+  // 了: liǎo "manage to" after a common verb + 得 / 不 when the clause ends or a person or an amount follows (跑得了吗, 吃得了这么多, 帮得了你,
+  // 怎能忘得了; not 就得了, 这还得了, 顺手弄好得了: dé le / de le, nor a name in 三国演义: 被兴得了). V得了 at the end is "and be done with it"
+  // as often (你干脆走得了, 实在不行就卖得了, 就这么办得了): after 得 only before 吗, a person or an amount
+  了: (p, n, pp) => LIAO_V.has(pp) && n !== SOLO_CUT && (p === '不' ? !n || SOLO_PART.test(n) || SOLO_PRON.test(n) || LIAO_OBJ.has(n) : p === '得' && (/^[吗么]$/.test(n) || SOLO_PRON.test(n) || LIAO_OBJ.has(n))) ? 'liao3' : null,
+  // 着: zháo "reach, hit" before 了 after a verb of reaching or hurting (找着了, 猜着了, 冻着了; not 先凑合用着了, 车停着了: zhe), in 着了火 /
+  // 着了凉 / 着了魔, and at the end after V得 / V不 (睡得着吗, 饿不着); else zhe
+  着: (p, n, pp, nn) => n === SOLO_CUT ? null : (n === '了' && (ZHAO_V.has(p) || (nn !== SOLO_CUT && /^(火|凉|魔|道|道儿|迷)$/.test(nn))))
+    || ((p === '得' || p === '不') && LIAO_V.has(pp) && (!n || SOLO_PART.test(n))) ? 'zhao2' : null,
+  // 冲: chòng "towards, at" before a person who is then looked at or spoken to (冲我笑, 冲他喊了一声, 冲我们挥手; not 冲我来了, 冲他冲过去:
+  // a motion, unclear), and "blunt, strong" at the end after a degree word (说话太冲, 这酒挺冲的); else chōng
+  // (only when what follows the person is a verb: 你去冲你的咖啡, 用凉水冲他的伤口 chōng; nor 他们真冲了出去, 就这么冲了上去;
+  // nor after 好 "easy to": 这奶粉很好冲, 马桶好冲吗 chōng)
+  冲: (p, n, pp, nn) => n === SOLO_CUT ? null : SOLO_PRON.test(n) ? (nn && nn !== SOLO_CUT && !TOWARD_MOVE.test(nn) && (verbDef(nn) || verbDef(nn[0])) ? 'chong4' : null)
+    : SOLO_DEG.has(p) && p !== '好' && (!n || SOLO_PART.test(n) || n === '的' || (n === '了' && (!nn || SOLO_PART.test(nn)) && !/^(这么|那么|真|好|最)$/.test(p))) ? 'chong4' : null,
+  // 长: zhǎng "grow" before 得 + how one looks (长得真好看, 长得像他妈, 长得很高; not 这条路长得很, 长得要命: cháng or unclear), 着 + what
+  // grows (脸上长着雀斑; not 日子还长着呢), 出 / 满 / 成 / 在 (从小长在河边), 了 + what grew (长了个包, 长了一身肉); else cháng
+  长: (p, n, pp, nn, n3) => {
+    if (n === SOLO_CUT || p === '云') return null; // 关云长 in 三国演义, split by the segmenter (云长在后)
+    // (像 / 跟 only before a person: 这一夜长得像一年, 走廊长得跟没有尽头似的 cháng; 好 only at the end: 这一天长得好漫长)
+    const look = w => ZHANG_LOOK.test(w) && !/^(像|跟)$/.test(w);
+    if (n === '得') return (look(nn) && (nn !== '好' || !n3 || SOLO_PART.test(n3))) || (/^(像|跟)$/.test(nn) && (SOLO_PRON.test(n3) || ZHANG_WHO.test(n3)))
+      || (ZHANG_DEG.has(nn) && look(n3)) || (ZHANG_DEG.has(nn[0]) && look(nn.slice(1))) ? 'zhang3' : null; // 长得很快
+    if (n === '着') return nn && nn !== SOLO_CUT && !SOLO_PART.test(nn) && !/^[嘞哩咧呐啰喽]$|^去/.test(nn) ? 'zhang3' : null; // 日子还长着嘞
+    if (n === '了') return /^(个|一个|一身|一脸|一张|一双|一副|一层|一岁|一颗|几颗)$/.test(nn) ? 'zhang3' : null; // 比原版长了不少: cháng
+    const after = n === '出' && nn === '了' ? n3 : nn; // 长出一口气: cháng
+    return /^(出|满|成|在|起来)$/.test(n) && !(n === '出' && (after === SOLO_CUT || /^(一口|口)气$/.test(after))) && !(n === '在' && (!nn || nn === SOLO_CUT)) ? 'zhang3' : null; // 牛市难以长在: cháng
+  },
+  // 数: shǔ "count" before 了 / 着 / 过 / 一下 / 不清 / what is counted, in 数一数, 数了数, 数都数不过来, and before who comes first (数他最高); else shù
+  // (not the noun after 这个 / 那个 / 这点 / 这些 / 的: 就这个数了, 这个数我最清楚, 这个数到明年就翻倍了, 就这些数了, 大概的数了)
+  数: (p, n, pp, nn) => n === SOLO_CUT || /[个这那点些的]$/.test(p) ? null : SHU_NEXT.test(n) || (n === '一' && (nn === '数' || nn === '下')) || (/^[都也]$/.test(n) && nn[0] === '数')
+    || (SOLO_PRON.test(n) && /^(最|第一)/.test(nn)) || ((p === '了' || p === '一') && pp === '数') ? 'shu3' : null,
+  // 背: bēi "carry on the back" before what is carried or where it goes (背孩子, 背起背篓, 背起新娘, 背黑锅, 背不动, 背回家); else bèi
+  // (背书, 三字经背起来一套套的)
+  // (not someone's text: 他背儿子的作文, 背起他的台词来; nor before a verb, the one who wrote it: 背奶奶教的那首诗, 背起我写的诗来)
+  背: (p, n, pp, nn, n3) => (BEI_LOAD.test(n) && !/^[的们]$/.test(nn) && !(nn && (verbDef(nn) || verbDef(nn[0])))) || /^(不动|得动|回|回来|回去|回家|走|上山|下山)$/.test(n) || (/^起了?$/.test(n) && nn !== SOLO_CUT && (BEI_LOAD.test(nn) || SOLO_PRON.test(nn)) && n3 !== '的' && !(n3 && (verbDef(n3) || verbDef(n3[0])))) ? 'bei1' : null,
+  // 转: zhuàn "go round" before a number of turns (转了一圈, 转三圈, 转个圈); else zhuǎn
+  转: (p, n, pp, nn, n3) => ZHUAN_ROUND.test(n) || (/^[了过着个]$/.test(n) && ZHUAN_ROUND.test(nn)) || (n === '了' && nn === '个' && n3[0] === '圈') ? 'zhuan4' : null,
+  // 觉: jiào "a sleep" after 一 / 个 / 好 / 安稳 or a verb of sleeping (睡了一觉, 睡个好觉, 一觉醒来, 睡不着觉, 睡大觉); else jué (大觉: realised;
+  // 她一觉出不对来, 我一觉不对)
+  觉: (p, n, pp) => (JIAO_BEFORE.has(p) && !(p === '一' && /^[出不得着察悟]/.test(n))) || (p === '大' && pp[0] === '睡') ? 'jiao4' : null,
+  // 应: yìng "answer" before 了 / 道 / 声 and 着 at the end (他应了一声, 应道, 应了那句老话, 嘴上应着); else yīng "should" (应着制式服装; 道 only at the end: 你应道个歉 yīng)
+  应: (p, n, pp, nn) => (n === '道' && !nn) || /^(声|一声)$/.test(n) || (n === '了' && !/^[却结解断]/.test(nn)) || (n === '着' && (!nn || SOLO_PART.test(nn) || /^(说|道)$/.test(nn))) ? 'ying4' : null,
+  // 宿: xiǔ "a night" after a number (待了一宿, 两宿没睡, 半宿); else sù
+  宿: (p, n, pp) => (SOLO_NUM.test(p) && p !== '七') || p === '整' ? 'xiu3' : null, // the stars, 东方七宿, 青龙七宿: xiù
+  // 种: zhòng "plant" before 了 / 着 / 过 or a crop, and before 的 after a person (种了一棵树, 种玉米, 自己种的), not after 这 / 各 / a number
+  // (the measure word zhǒng: 三种花, 不同种了); else zhǒng
+  种: (p, n) => p === SOLO_CUT || n === SOLO_CUT || SOLO_DET.test(p) || /同$/.test(p) ? null : /^[了着过]$/.test(n) || ZHONG_CROP.has(n) || (n === '的' && SOLO_PRON.test(p)) ? 'zhong4' : null,
+  // 重: chóng "again" before a verb of doing over (重做一遍, 重写了, 重回故乡); not after a degree word (太重, 很重); else zhòng
+  重: (p, n, pp, nn) => p !== SOLO_CUT && REDO.has(n) && !SOLO_DEG.has(p) && !/^(不|不了|没|没有|不完|不动|不起)$/.test(nn) ? 'chong2' : null, // 活重做不完, 伤重来不了: zhòng
+  // 量: liáng "measure" before 了 / 一下 / 着 / 过 or what is measured, and in 量一量 / 量了量 (量体温, 量了量尺寸); else liàng
+  // (not the noun after 这个 / 的: 就这个量了, 最大的量了, 药的量过了; nor 量过大; 了 only before what is measured or 量: 喝到量了, 药加量了)
+  量: (p, n, pp, nn) => n === SOLO_CUT || /[个这那点的]$/.test(p) || (n === '过' && nn && nn !== '了' && !SOLO_PART.test(nn) && !LIANG_NEXT.test(nn)) ? null : LIANG_NEXT.test(n) || (n === '了' && (nn === '量' || LIANG_NEXT.test(nn))) || (n === '一' && nn === '量') || ((p === '一' || p === '了') && pp === '量') ? 'liang2' : null,
+  // 铺: pū "spread, lay" before where, 了 / 着 or how (铺在床上, 铺了一层报纸, 铺满了落叶, 铺好床); else pù "shop, bunk" (睡在铺上)
+  铺: (p, n) => p !== '的' && !/[个这那]$/.test(p) && /^(在|了|着|满|成|开|好|平|到|得)$/.test(n) ? 'pu1' : null // 我的铺在下面: pù
 };
 // the segmenter's words, and a few that swallow a standalone 得 split again: 你得来 / 早晚得出事 (děi + 来 / 出), 他乐得合不拢嘴 / 这钱挣得不容易
 // (V + complement de, not lèdé / zhèngdé), 我还不得累死 (bù děi, northeastern). Real words keep their reading: 取得, 获得, 值得, 觉得, 赢得了比赛,
