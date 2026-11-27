@@ -3183,15 +3183,15 @@ function hitResults(hit) {
 // annotated, each character sits in its own <ruby>: the run is read from the block's text): len = its length when soloSegs split it off
 // a longer word (你得来: 1), else 0; py = the reading of a standalone 得 or other SOLO_READ character (text with its tone mark, děi), in pīn mode its own <rt>
 function hitSoloRead(hit) {
-  const [node, off] = hit.pos[0], rb = node.parentElement && node.parentElement.closest('ruby[data-py]');
-  const tw = textWalker(hit.block); let full = '', abs = -1, n;
-  while ((n = tw.nextNode())) { if (n === node) abs = full.length + off; full += n.data; }
-  if (abs < 0) return null;
-  const d = rb ? full : node.data, o = rb ? abs : off, base = abs - o; let a = o, b = o + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
-  const ns = normZh(d.slice(a, b), bookIsTrad()), cut = soloCut(full, base + a, base + b, rowCut(hit.block)), segs = soloSegs(ns, cut), k = segs.findIndex(s => s[0] === o - a);
+  const [node, off] = hit.pos[0], rb = node.parentElement && node.parentElement.closest('ruby[data-py]'), t = textAround(hit.block, node, off);
+  if (!t) return null;
+  const [full, abs, edge] = t, d = rb ? full : node.data, o = rb ? abs : off, base = abs - o; let a = o, b = o + 1; while (a > 0 && HAN.test(d[a - 1])) a--; while (b < d.length && HAN.test(d[b])) b++;
+  // (the block's own edges only matter when the window reached one: in a podcast, rowCut queries the whole block for its .pseg)
+  const ns = normZh(d.slice(a, b), bookIsTrad()), cut = soloCut(full, base + a, base + b, edge ? rowCut(hit.block) : [false, false]), segs = soloSegs(ns, cut), k = segs.findIndex(s => s[0] === o - a);
   const rt = rb && rb.querySelector('rt'); if (k < 0) return rt ? { len: 0, py: rt.textContent } : null; // inside a word: 取得 dé
   // (in pīn mode off, a character the rules leave alone has its usual reading, as under the ruby: 这条路长得很 cháng, not 长得 zhǎng de first)
-  const one = segs[k][1] - segs[k][0] === 1 && SOLO_READ[ns[o - a]], s0 = segment(ns).find(x => x[0] === o - a), py = rb ? rt && rt.textContent : one && (soloRead(ns, segs, k, cut) || pinyinForWord(d[o], ns[o - a])[0]);
+  // (without a 得, soloSegs gave the segmenter's own words: no second segment)
+  const one = segs[k][1] - segs[k][0] === 1 && SOLO_READ[ns[o - a]], s0 = (ns.includes('得') ? segment(ns) : segs).find(x => x[0] === o - a), py = rb ? rt && rt.textContent : one && (soloRead(ns, segs, k, cut) || pinyinForWord(d[o], ns[o - a])[0]);
   return { len: !s0 || s0[1] !== segs[k][1] ? segs[k][1] - segs[k][0] : 0, py: py ? (rb ? py : syllable(py).text.toLowerCase()) : null };
 }
 function hidePop() {
@@ -3636,11 +3636,38 @@ function soloCut(full, a, b, open) {
 // cuts sentences anywhere, often right after a verb (他当时气 | 得说不出话来 stays de; 。| 得赶紧走 is děi); a block whose own sentence
 // is not in R.data.pod.segs is unknown: a cut
 function rowCut(block) {
-  const ps = block.matches('.pseg') ? [block] : $$('.pseg', block), segs = ps.length && R.data && R.data.pod && R.data.pod.segs;
-  if (!segs) return block.closest('.lrow') ? [true, true] : [false, false];
+  // (a book: no query; « Lignes » calls this for every row: the query's own list, not a copy)
+  const segs = R.data && R.data.pod && R.data.pod.segs, ps = !segs ? [] : block.matches('.pseg') ? [block] : block.querySelectorAll('.pseg');
+  if (!segs || !ps.length) return block.closest('.lrow') ? [true, true] : [false, false];
   const i = +ps[0].dataset.i, k = +ps[ps.length - 1].dataset.i, g = segs[i], h = segs[k];
-  const goes = (x, y, end) => { if (!y) return true; if (!x) return false; if (x.sp != null && y.sp != null && x.sp !== y.sp) return false; const t = x.t.replace(end ? /[\s—–―…⋯·～~]+$/ : /^[\s—–―…⋯·～~]+/, ''); return !t || HAN.test(end ? t[t.length - 1] : t[0]); };
-  return [goes(segs[i - 1], g, true), goes(segs[k + 1], h, false)];
+  return [rowGoes(segs[i - 1], g, true), rowGoes(segs[k + 1], h, false)];
+}
+// whether sentence y goes on from x, the one before it (end) or after it: same speaker, and x's last (first) character past the glue is Han
+// (a scan, not a copy of the text without its glue)
+const rowGoes = (x, y, end) => {
+  if (!y) return true; if (!x) return false; if (x.sp != null && y.sp != null && x.sp !== y.sp) return false;
+  const t = x.t; for (let i = end ? t.length - 1 : 0; end ? i >= 0 : i < t.length; i += end ? -1 : 1) if (!SOLO_GLUE.test(t[i])) return HAN.test(t[i]);
+  return true;
+};
+// the block's text around (node, off) as hitSoloRead reads it: [text, index of off in it, whether it reaches an edge of the block]. It holds
+// the run of Han characters at off, the glue (SOLO_GLUE) on each side and what soloCut reads beyond: one character after, two before (a word
+// in quotes). Walked out from the tapped node, not over the whole block: in pīn mode every character and every <rt> is a node, and a tap in
+// a 20,000-character paragraph took 47 ms (each move of the mouse too). A walker that only goes forward (the tests' stub) reads it all
+function textAround(block, node, off) {
+  const tw = textWalker(block);
+  if (!tw.previousNode) { let full = '', abs = -1, n; while ((n = tw.nextNode())) { if (n === node) abs = full.length + off; full += n.data; } return abs < 0 ? null : [full, abs, true]; }
+  // the walker's filter: not the block's text; nor a node outside the block, which a walk over it never meets (the walker's
+  // previousNode would go on through the document) or a detached one
+  if (!block.contains(node) || node.parentElement.closest('rt,rp,.prep')) return null;
+  // st: 0 in the run, 1 in the glue beyond it, 2 then: the characters still wanted are counted down
+  const scan = more => { let st = 0; return c => { if (!st && HAN.test(c)) return false; if (st < 2 && SOLO_GLUE.test(c)) { st = 1; return false; } st = 2; return !--more; }; };
+  const d = node.data, back = scan(2), fwd = scan(1); let pre = d.slice(0, off), post = d.slice(off), n, i, done = false;
+  for (i = pre.length - 1; i >= 0 && !(done = back(pre[i])); i--);
+  tw.currentNode = node; while (!done && (n = tw.previousNode())) { const s = n.data; for (i = s.length - 1; i >= 0 && !(done = back(s[i])); i--); pre = s + pre; }
+  const edge = !done; done = false; // (the tapped character itself is always in the run: from the one after it)
+  for (i = 1; i < post.length && !(done = fwd(post[i])); i++);
+  tw.currentNode = node; while (!done && (n = tw.nextNode())) { const s = n.data; for (i = 0; i < s.length && !(done = fwd(s[i])); i++); post += s; }
+  return [pre + post, pre.length, edge || !done];
 }
 // for the rules of the other characters below: a person (冲他笑, 数他最高), a number (一宿, 两宿), a sentence particle (日子还长着呢: the clause
 // ends), a degree word (太冲, not 太重做); then the tables of each character, in the order of the rules
@@ -3788,15 +3815,22 @@ function soloRead(ns, segs, k, cut) {
   return f && segs[k][1] - segs[k][0] === 1 ? f(w(k - 1), w(k + 1), w(k - 2), w(k + 2), w(k + 3)) : null;
 }
 // pinyin of segment k (ruby and « Lignes » alike)
-const segPinyin = (run, ns, segs, k, cut) => { const [a, b, py] = segs[k], s = !py && b - a === 1 && SOLO_READ[ns[a]] && soloRead(ns, segs, k, cut); return py || (s ? [s] : pinyinForWord(run.slice(a, b), ns.slice(a, b))); };
+// (SOLO_AT: the characters SOLO_READ has rules for, by code: a test that makes no one-character string, for nearly every segment)
+const SOLO_AT = Object.keys(SOLO_READ).reduce((t, c) => (t[c.charCodeAt(0)] = 1, t), new Uint8Array(65536));
+const segPinyin = (run, ns, segs, k, cut) => { const [a, b, py] = segs[k], s = !py && b - a === 1 && SOLO_AT[ns.charCodeAt(a)] && soloRead(ns, segs, k, cut); return py || (s ? [s] : pinyinForWord(run.slice(a, b), ns.slice(a, b))); };
 function annotate(sec) {
   if (sec.dataset.py) return; sec.dataset.py = '1';
   const tw = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('rt,rp,ruby,.prep') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
   const nodes = []; let n; while ((n = tw.nextNode())) if (HAN.test(n.data)) nodes.push(n);
   const isTrad = bookIsTrad();
   // the block's whole text: what comes before and after each text node's runs (soloCut: 他气<b>得</b>把… is not 得 opening a clause)
-  const open = rowCut(sec), at = new Map(); let full = '';
-  if (Words.ready) { const tw2 = textWalker(sec); while ((n = tw2.nextNode())) { at.set(n, full.length); full += n.data; } }
+  // (none without Han text; a paragraph that is a single text node, most of them, is its own text: no second walk)
+  const at = new Map(); let full = '', open;
+  if (Words.ready && nodes.length) {
+    open = rowCut(sec);
+    if (nodes[0] === sec.firstChild && !nodes[0].nextSibling) { full = nodes[0].data; at.set(nodes[0], 0); }
+    else { const tw2 = textWalker(sec); while ((n = tw2.nextNode())) { at.set(n, full.length); full += n.data; } }
+  }
   for (const node of nodes) {
     const d = node.data, frag = document.createDocumentFragment(); let i = 0, buf = '';
     const plan = new Map(); // start -> [len, pinyin[]]
@@ -3805,7 +3839,7 @@ function annotate(sec) {
       while ((m = re.exec(d))) {
         const run = m[0], ns = normZh(run, isTrad);
         const o = at.get(node) + m.index, cut = soloCut(full, o, o + run.length, open), segs = soloSegs(ns, cut);
-        segs.forEach(([a, b], k) => { const nw = ns.slice(a, b); plan.set(m.index + a, [b - a, segPinyin(run, ns, segs, k, cut), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); });
+        for (let k = 0; k < segs.length; k++) { const [a, b] = segs[k], nw = ns.slice(a, b); plan.set(m.index + a, [b - a, segPinyin(run, ns, segs, k, cut), b - a >= 4 && isIdiom(nw, Dict.entries(nw))]); }
       }
     }
     while (i < d.length) {
@@ -4677,7 +4711,7 @@ function pyLine(text, open = [true, true]) {
   while ((m = re.exec(text))) {
     other(text.slice(last, m.index)); last = m.index + m[0].length;
     const run = m[0], ns = normZh(run, isTrad);
-    if (Words.ready) { const cut = soloCut(text, m.index, m.index + run.length, open), segs = soloSegs(ns, cut); segs.forEach(([a, b], k) => toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b), segPinyin(run, ns, segs, k, cut)), k: 'w' })); }
+    if (Words.ready) { const cut = soloCut(text, m.index, m.index + run.length, open), segs = soloSegs(ns, cut); for (let k = 0; k < segs.length; k++) { const [a, b] = segs[k]; toks.push({ t: pyWord(run.slice(a, b), ns.slice(a, b), segPinyin(run, ns, segs, k, cut)), k: 'w' }); } }
     else for (let i = 0; i < run.length;) { // no word list: longest dictionary match
       let L = 1; for (let n = Math.min(Dict.maxLen, run.length - i); n > 1; n--) if (Dict.entries(ns.slice(i, i + n))) { L = n; break; }
       toks.push({ t: pyWord(run.slice(i, i + L), ns.slice(i, i + L)), k: 'w' }); i += L;
